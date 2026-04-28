@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kinsonli Bulk TempMail</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="topbar">
+      <div>
+        <p class="eyebrow">Kinsonli TempMail</p>
+        <h1>Bulk inbox code checker</h1>
+      </div>
+      <div class="status-pill" id="statusPill">Idle</div>
+    </section>
+
+    <section class="control-panel">
+      <div class="field">
+        <label for="countInput">Jumlah email</label>
+        <input id="countInput" type="number" min="1" max="10" value="10">
+      </div>
+      <div class="field">
+        <label for="domainSelect">Domain</label>
+        <select id="domainSelect">
+          <option value="kinsonli.site">kinsonli.site</option>
+        </select>
+      </div>
+      <div class="field add-domain-field">
+        <label for="customDomainInput">Tambah domain</label>
+        <div class="inline-field">
+          <input id="customDomainInput" type="text" placeholder="domainbaru.com">
+          <button id="addDomainBtn" type="button" class="secondary">Tambah</button>
+        </div>
+      </div>
+      <div class="control-actions">
+        <button id="generateBtn" type="button">Generate</button>
+        <button id="checkBtn" type="button" class="secondary" disabled>Cek Inbox</button>
+        <button id="stopBtn" type="button" class="secondary" disabled>Stop</button>
+        <button id="copyAllBtn" type="button" class="secondary" disabled>Copy Email</button>
+        <button id="clearBtn" type="button" class="danger">Clear</button>
+      </div>
+    </section>
+
+    <section class="summary-row">
+      <div>
+        <span>Generated</span>
+        <strong id="generatedCount">0</strong>
+      </div>
+      <div>
+        <span>Found</span>
+        <strong id="foundCount">0</strong>
+      </div>
+      <div>
+        <span>Waiting</span>
+        <strong id="waitingCount">0</strong>
+      </div>
+    </section>
+
+    <section id="mailGrid" class="mail-grid">
+      <div class="empty-state">Generate email dulu untuk mulai cek inbox.</div>
+    </section>
+
+    <footer>
+      API local: <code>/api/generate</code> dan <code>/api/inbox/bulk</code>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

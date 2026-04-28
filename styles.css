@@ -1,0 +1,366 @@
+:root {
+  --bg: #101216;
+  --surface: #181c22;
+  --surface-2: #222832;
+  --line: #303844;
+  --text: #f3f7fb;
+  --muted: #9ca7b6;
+  --accent: #31d0aa;
+  --accent-2: #72a7ff;
+  --danger: #f26175;
+  --warning: #f7bf54;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.26);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(49, 208, 170, 0.15), transparent 30rem),
+    linear-gradient(135deg, #101216, #151a22 55%, #11141a);
+  color: var(--text);
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 16px;
+  background: var(--accent);
+  color: #061411;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+button:hover {
+  filter: brightness(1.07);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button.secondary {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+button.danger {
+  background: rgba(242, 97, 117, 0.14);
+  border: 1px solid rgba(242, 97, 117, 0.38);
+  color: #ffbac2;
+}
+
+input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: #11161d;
+  color: var(--text);
+  outline: none;
+}
+
+input:focus {
+  border-color: rgba(49, 208, 170, 0.7);
+}
+
+code {
+  color: var(--accent);
+}
+
+.shell {
+  width: min(1220px, calc(100% - 28px));
+  margin: 0 auto;
+  padding: 28px 0 20px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 34px;
+  line-height: 1.08;
+}
+
+.status-pill {
+  min-width: 96px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 13px;
+  background: rgba(24, 28, 34, 0.88);
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.status-pill.ok {
+  border-color: rgba(49, 208, 170, 0.48);
+  color: var(--accent);
+}
+
+.status-pill.error {
+  border-color: rgba(242, 97, 117, 0.52);
+  color: #ffbac2;
+}
+
+.control-panel,
+.summary-row,
+.mail-card,
+.empty-state {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(24, 28, 34, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.control-panel {
+  display: grid;
+  grid-template-columns: 130px minmax(200px, 0.8fr) minmax(280px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: #11161d;
+  color: var(--text);
+  outline: none;
+}
+
+select:focus {
+  border-color: rgba(49, 208, 170, 0.7);
+}
+
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.inline-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  padding: 0;
+}
+
+.summary-row div {
+  min-height: 76px;
+  padding: 14px 16px;
+  background: rgba(34, 40, 50, 0.55);
+}
+
+.summary-row span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.summary-row strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 28px;
+}
+
+.mail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mail-card {
+  min-width: 0;
+  padding: 15px;
+}
+
+.mail-card.waiting {
+  border-color: rgba(247, 191, 84, 0.35);
+}
+
+.mail-card.found {
+  border-color: rgba(49, 208, 170, 0.45);
+}
+
+.mail-card-top,
+.code-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mail-card-top {
+  margin-bottom: 12px;
+}
+
+.mail-card-top strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--accent-2);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 15px;
+}
+
+.badge {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.found .badge {
+  border-color: rgba(49, 208, 170, 0.45);
+  color: var(--accent);
+}
+
+.waiting .badge {
+  border-color: rgba(247, 191, 84, 0.38);
+  color: var(--warning);
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid rgba(48, 56, 68, 0.7);
+}
+
+.detail-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.detail-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.code-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(48, 56, 68, 0.7);
+}
+
+.code-row strong {
+  color: var(--accent);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 24px;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  padding: 24px 18px;
+  color: var(--muted);
+}
+
+.error-box {
+  color: #ffbac2;
+}
+
+footer {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    display: block;
+  }
+
+  .status-pill {
+    width: fit-content;
+    margin-top: 12px;
+  }
+
+  .control-panel,
+  .mail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .control-actions {
+    justify-content: stretch;
+  }
+
+  .control-actions button {
+    flex: 1 1 calc(50% - 8px);
+  }
+
+  h1 {
+    font-size: 28px;
+  }
+}
