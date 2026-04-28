@@ -238,27 +238,9 @@ function renderEmailCard(email, message) {
   if (!message) {
     const waiting = document.createElement("p");
     waiting.className = "muted";
-    waiting.textContent = "Belum ada subject masuk.";
+    waiting.textContent = "Menunggu kode...";
     card.appendChild(waiting);
     return card;
-  }
-
-  const details = [
-    ["To", message.to || email],
-    ["From", message.from || "-"],
-    ["Subject", message.subject || "-"],
-    ["Received", formatDate(message.received_at)],
-  ];
-
-  for (const [label, value] of details) {
-    const row = document.createElement("div");
-    row.className = "detail-row";
-    const labelEl = document.createElement("span");
-    labelEl.textContent = label;
-    const valueEl = document.createElement("strong");
-    valueEl.textContent = value;
-    row.append(labelEl, valueEl);
-    card.appendChild(row);
   }
 
   const codeRow = document.createElement("div");
