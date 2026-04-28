@@ -230,7 +230,7 @@ select:focus {
 
 .mail-card {
   min-width: 0;
-  padding: 15px;
+  padding: 14px;
 }
 
 .mail-card.waiting {
@@ -287,29 +287,8 @@ select:focus {
   font-size: 13px;
 }
 
-.detail-row {
-  display: grid;
-  grid-template-columns: 82px minmax(0, 1fr);
-  gap: 10px;
-  padding: 7px 0;
-  border-top: 1px solid rgba(48, 56, 68, 0.7);
-}
-
-.detail-row span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.detail-row strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 13px;
-  line-height: 1.35;
-}
-
 .code-row {
-  margin-top: 12px;
+  margin-top: 10px;
   padding-top: 12px;
   border-top: 1px solid rgba(48, 56, 68, 0.7);
 }
@@ -317,7 +296,8 @@ select:focus {
 .code-row strong {
   color: var(--accent);
   font-family: Consolas, "Courier New", monospace;
-  font-size: 24px;
+  font-size: 28px;
+  line-height: 1.1;
 }
 
 .empty-state {
