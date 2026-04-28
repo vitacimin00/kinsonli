@@ -26,6 +26,9 @@ const els = {
   foundCount: document.querySelector("#foundCount"),
   waitingCount: document.querySelector("#waitingCount"),
   mailGrid: document.querySelector("#mailGrid"),
+  manualEmailInput: document.querySelector("#manualEmailInput"),
+  manualCheckBtn: document.querySelector("#manualCheckBtn"),
+  manualResult: document.querySelector("#manualResult"),
 };
 
 function setStatus(text, type = "") {
@@ -267,6 +270,99 @@ function showError(message) {
   els.mailGrid.appendChild(box);
 }
 
+async function checkManualEmail() {
+  const email = els.manualEmailInput.value.trim().toLowerCase();
+  if (!email) {
+    renderManualEmpty("Masukkan alamat email dulu.");
+    return;
+  }
+
+  els.manualCheckBtn.disabled = true;
+  setStatus("Manual check");
+  try {
+    const data = await api("/api/inbox/detail", { email });
+    renderManualResult(data);
+    setStatus("Ready", "ok");
+  } catch (error) {
+    setStatus("Error", "error");
+    renderManualError(error.message);
+  } finally {
+    els.manualCheckBtn.disabled = false;
+  }
+}
+
+function renderManualResult(data) {
+  const message = data.message;
+  if (!message) {
+    renderManualEmpty("Belum ada email masuk untuk alamat ini.");
+    return;
+  }
+
+  els.manualResult.innerHTML = "";
+
+  const meta = document.createElement("div");
+  meta.className = "manual-meta";
+  meta.append(
+    createMetaRow("From", message.from || "-"),
+    createMetaRow("Subject", message.subject || "-"),
+    createMetaRow("Received", formatDate(message.received_at)),
+  );
+  els.manualResult.appendChild(meta);
+
+  if (message.code) {
+    const codeRow = document.createElement("div");
+    codeRow.className = "manual-code";
+    const code = document.createElement("strong");
+    code.textContent = message.code;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary";
+    button.textContent = "Copy Code";
+    button.addEventListener("click", () => copyText(message.code, "Copied"));
+    codeRow.append(code, button);
+    els.manualResult.appendChild(codeRow);
+  }
+
+  if (message.allowed_full_body) {
+    const body = document.createElement("pre");
+    body.className = "manual-body";
+    body.textContent = message.body || "Isi email kosong.";
+    els.manualResult.appendChild(body);
+    return;
+  }
+
+  const notice = document.createElement("p");
+  notice.className = "manual-notice";
+  notice.textContent = `Isi email disembunyikan. Sender terdeteksi: ${message.from_email || message.from || "-"}`;
+  els.manualResult.appendChild(notice);
+}
+
+function createMetaRow(label, value) {
+  const row = document.createElement("div");
+  const labelEl = document.createElement("span");
+  labelEl.textContent = label;
+  const valueEl = document.createElement("strong");
+  valueEl.textContent = value;
+  row.append(labelEl, valueEl);
+  return row;
+}
+
+function renderManualEmpty(text) {
+  els.manualResult.innerHTML = "";
+  const empty = document.createElement("p");
+  empty.className = "muted";
+  empty.textContent = text;
+  els.manualResult.appendChild(empty);
+}
+
+function renderManualError(text) {
+  els.manualResult.innerHTML = "";
+  const error = document.createElement("p");
+  error.className = "error-box";
+  error.textContent = text || "Gagal cek email.";
+  els.manualResult.appendChild(error);
+}
+
 async function copyText(text, statusText = "Copied") {
   await navigator.clipboard.writeText(text);
   setStatus(statusText, "ok");
@@ -306,6 +402,12 @@ function bindEvents() {
   els.stopBtn.addEventListener("click", () => stopChecking());
   els.copyAllBtn.addEventListener("click", copyAllEmails);
   els.clearBtn.addEventListener("click", clearAll);
+  els.manualCheckBtn.addEventListener("click", checkManualEmail);
+  els.manualEmailInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      checkManualEmail();
+    }
+  });
 }
 
 bindEvents();
