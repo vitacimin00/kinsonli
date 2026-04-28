@@ -17,9 +17,9 @@ import json
 import re
 import secrets
 import sqlite3
-import string
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email.utils import parseaddr
 from email import policy
 from email.parser import BytesParser
 from http import HTTPStatus
@@ -33,6 +33,8 @@ DB_PATH = APP_DIR / "tempmail.db"
 DOMAINS_PATH = APP_DIR / "tempmail_domains.json"
 DEFAULT_DOMAIN = "kinsonli.site"
 MAX_BULK_EMAILS = 10
+MESSAGE_TTL_DAYS = 7
+FULL_BODY_ALLOWED_SENDER = "noreply@tm.openai.com"
 
 CODE_PATTERNS = [
     re.compile(r"\b([A-Z0-9]{2,5}-[A-Z0-9]{2,5})\b", re.IGNORECASE),
@@ -72,10 +74,22 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient, id DESC)"
         )
+    cleanup_expired_messages()
 
 
 def clean_email(value: str) -> str:
     return value.strip().lower()
+
+
+def sender_email(value: str) -> str:
+    return clean_email(parseaddr(value)[1] or value)
+
+
+def cleanup_expired_messages() -> None:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=MESSAGE_TTL_DAYS))
+    cutoff_text = cutoff.replace(microsecond=0).isoformat()
+    with db_connect() as conn:
+        conn.execute("DELETE FROM messages WHERE received_at < ?", (cutoff_text,))
 
 
 def is_valid_email(value: str) -> bool:
@@ -175,6 +189,7 @@ def store_message(recipient: str, sender: str, subject: str, body: str, raw: str
 
 
 def latest_message_for(email: str) -> dict | None:
+    cleanup_expired_messages()
     with db_connect() as conn:
         row = conn.execute(
             """
@@ -195,9 +210,44 @@ def latest_message_for(email: str) -> dict | None:
         "id": row["id"],
         "to": row["recipient"],
         "from": row["sender"],
+        "from_email": sender_email(row["sender"]),
         "subject": row["subject"],
         "received_at": row["received_at"],
         "code": code,
+    }
+
+
+def latest_message_detail_for(email: str) -> dict | None:
+    cleanup_expired_messages()
+    with db_connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, recipient, sender, subject, body, received_at
+            FROM messages
+            WHERE recipient = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (clean_email(email),),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    from_email = sender_email(row["sender"])
+    allowed_full_body = from_email == FULL_BODY_ALLOWED_SENDER
+    code = extract_code(row["subject"], row["body"])
+    return {
+        "id": row["id"],
+        "to": row["recipient"],
+        "from": row["sender"],
+        "from_email": from_email,
+        "subject": row["subject"],
+        "received_at": row["received_at"],
+        "code": code,
+        "allowed_full_body": allowed_full_body,
+        "body": row["body"] if allowed_full_body else None,
+        "expires_days": MESSAGE_TTL_DAYS,
     }
 
 
@@ -343,6 +393,9 @@ class TempMailHandler(SimpleHTTPRequestHandler):
         if path == "/api/inbox/bulk":
             self.handle_bulk_inbox()
             return
+        if path == "/api/inbox/detail":
+            self.handle_inbox_detail()
+            return
         if path == "/api/domains":
             self.handle_add_domain()
             return
@@ -392,6 +445,20 @@ class TempMailHandler(SimpleHTTPRequestHandler):
                 "message": message,
             })
         self.write_json({"results": results})
+
+    def handle_inbox_detail(self) -> None:
+        payload = self.read_json()
+        email = clean_email(str(payload.get("email") or ""))
+        if not is_valid_email(email):
+            self.write_json({"error": "Email tidak valid."}, HTTPStatus.BAD_REQUEST)
+            return
+
+        message = latest_message_detail_for(email)
+        self.write_json({
+            "email": email,
+            "status": "found" if message else "waiting",
+            "message": message,
+        })
 
     def read_json(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
