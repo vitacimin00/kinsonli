@@ -138,6 +138,7 @@ h1 {
 }
 
 .control-panel,
+.manual-panel,
 .summary-row,
 .mail-card,
 .empty-state {
@@ -306,6 +307,103 @@ select:focus {
   color: var(--muted);
 }
 
+.manual-panel {
+  margin-top: 16px;
+  padding: 16px;
+}
+
+.manual-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.manual-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.manual-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.manual-result {
+  min-height: 76px;
+  border: 1px solid rgba(48, 56, 68, 0.7);
+  border-radius: 7px;
+  padding: 14px;
+  background: rgba(17, 22, 29, 0.72);
+  color: var(--muted);
+}
+
+.manual-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.manual-meta div {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.manual-meta span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.manual-meta strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.manual-code {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(48, 56, 68, 0.7);
+}
+
+.manual-code strong {
+  color: var(--accent);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 28px;
+}
+
+.manual-body {
+  max-height: 420px;
+  overflow: auto;
+  margin: 14px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid rgba(48, 56, 68, 0.7);
+  color: #dbe3ee;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.manual-notice {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(48, 56, 68, 0.7);
+  color: var(--warning);
+  font-size: 13px;
+}
+
 .error-box {
   color: #ffbac2;
 }
@@ -329,6 +427,14 @@ footer {
 
   .control-panel,
   .mail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .manual-head {
+    display: block;
+  }
+
+  .manual-controls {
     grid-template-columns: 1fr;
   }
 
