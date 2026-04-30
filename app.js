@@ -15,6 +15,7 @@ const els = {
   statusPill: document.querySelector("#statusPill"),
   countInput: document.querySelector("#countInput"),
   domainSelect: document.querySelector("#domainSelect"),
+  nameSourceSelect: document.querySelector("#nameSourceSelect"),
   customDomainInput: document.querySelector("#customDomainInput"),
   addDomainBtn: document.querySelector("#addDomainBtn"),
   generateBtn: document.querySelector("#generateBtn"),
@@ -77,9 +78,10 @@ async function generateEmails() {
   try {
     const count = clampCount(els.countInput.value);
     const domain = normalizeDomain(els.domainSelect.value);
+    const source = els.nameSourceSelect.value;
     els.countInput.value = String(count);
 
-    const data = await api("/api/generate", { count, domain });
+    const data = await api("/api/generate", { count, domain, source });
     state.emails = data.emails || [];
     state.inbox = new Map();
     render();
