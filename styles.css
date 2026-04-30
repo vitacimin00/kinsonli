@@ -149,15 +149,36 @@ h1 {
 }
 
 .control-panel {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
   padding: 16px;
   margin-bottom: 14px;
 }
 
 .control-fields {
-  display: grid;
-  grid-template-columns: 130px minmax(220px, 1fr) 180px minmax(300px, 1fr);
-  gap: 12px;
-  align-items: end;
+  display: contents;
+}
+
+.control-panel > .field:nth-of-type(1),
+.control-fields > .field:nth-child(1) {
+  grid-column: span 2;
+}
+
+.control-panel > .field:nth-of-type(2),
+.control-fields > .field:nth-child(2) {
+  grid-column: span 3;
+}
+
+.control-panel > .field:nth-of-type(3),
+.control-fields > .field:nth-child(3) {
+  grid-column: span 2;
+}
+
+.control-panel > .field:nth-of-type(4),
+.control-fields > .field:nth-child(4) {
+  grid-column: span 5;
 }
 
 select {
@@ -186,7 +207,7 @@ select:focus {
 
 .inline-field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(180px, 1fr) auto;
   gap: 8px;
 }
 
@@ -195,11 +216,11 @@ select:focus {
   flex-wrap: nowrap;
   gap: 8px;
   justify-content: flex-start;
-  margin-top: 12px;
+  grid-column: 1 / -1;
 }
 
 .control-actions button {
-  min-width: 112px;
+  min-width: 104px;
   white-space: nowrap;
 }
 
@@ -424,6 +445,28 @@ footer {
   text-align: right;
 }
 
+@media (max-width: 1100px) {
+  .control-panel > .field:nth-of-type(1),
+  .control-fields > .field:nth-child(1) {
+    grid-column: span 3;
+  }
+
+  .control-panel > .field:nth-of-type(2),
+  .control-fields > .field:nth-child(2) {
+    grid-column: span 5;
+  }
+
+  .control-panel > .field:nth-of-type(3),
+  .control-fields > .field:nth-child(3) {
+    grid-column: span 4;
+  }
+
+  .control-panel > .field:nth-of-type(4),
+  .control-fields > .field:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 900px) {
   .topbar {
     display: block;
@@ -434,13 +477,19 @@ footer {
     margin-top: 12px;
   }
 
-  .control-panel,
   .mail-grid {
     grid-template-columns: 1fr;
   }
 
-  .control-fields {
-    grid-template-columns: 1fr;
+  .control-panel > .field:nth-of-type(1),
+  .control-panel > .field:nth-of-type(2),
+  .control-panel > .field:nth-of-type(3),
+  .control-panel > .field:nth-of-type(4),
+  .control-fields > .field:nth-child(1),
+  .control-fields > .field:nth-child(2),
+  .control-fields > .field:nth-child(3),
+  .control-fields > .field:nth-child(4) {
+    grid-column: 1 / -1;
   }
 
   .manual-head {
