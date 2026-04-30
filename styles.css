@@ -150,7 +150,7 @@ h1 {
 
 .control-panel {
   display: grid;
-  grid-template-columns: 130px minmax(200px, 0.8fr) minmax(280px, 1fr) auto;
+  grid-template-columns: 120px minmax(180px, 0.8fr) minmax(150px, 0.55fr) minmax(260px, 1fr) auto;
   gap: 12px;
   align-items: end;
   padding: 16px;
