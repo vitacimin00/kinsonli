@@ -46,7 +46,7 @@ function clampCount(value) {
 }
 
 function normalizeDomain(value) {
-  return value.trim().toLowerCase().replace(/^@+/, "") || "kinsonli.site";
+  return value.trim().toLowerCase().replace(/^@+/, "");
 }
 
 async function api(path, body) {
@@ -98,17 +98,23 @@ async function loadDomains(selectedDomain = "") {
     renderDomains(data.domains || [], selectedDomain);
   } catch (error) {
     setStatus("Domain error", "error");
-    renderDomains(["kinsonli.site"], selectedDomain);
+    renderDomains([], selectedDomain);
   }
 }
 
 function renderDomains(domains, selectedDomain = "") {
-  const current = normalizeDomain(selectedDomain || els.domainSelect.value || "kinsonli.site");
+  const current = normalizeDomain(selectedDomain || els.domainSelect.value || "");
   els.domainSelect.innerHTML = "";
 
   const unique = [...new Set(domains.map(normalizeDomain).filter(Boolean))];
-  if (!unique.includes("kinsonli.site")) {
-    unique.unshift("kinsonli.site");
+  if (!unique.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Tambah domain dulu";
+    option.disabled = true;
+    option.selected = true;
+    els.domainSelect.appendChild(option);
+    return;
   }
 
   unique.forEach((domain) => {
