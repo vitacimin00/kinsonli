@@ -149,36 +149,15 @@ h1 {
 }
 
 .control-panel {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 12px;
-  align-items: end;
   padding: 16px;
   margin-bottom: 14px;
 }
 
 .control-fields {
-  display: contents;
-}
-
-.control-panel > .field:nth-of-type(1),
-.control-fields > .field:nth-child(1) {
-  grid-column: span 2;
-}
-
-.control-panel > .field:nth-of-type(2),
-.control-fields > .field:nth-child(2) {
-  grid-column: span 3;
-}
-
-.control-panel > .field:nth-of-type(3),
-.control-fields > .field:nth-child(3) {
-  grid-column: span 2;
-}
-
-.control-panel > .field:nth-of-type(4),
-.control-fields > .field:nth-child(4) {
-  grid-column: span 5;
+  display: grid;
+  grid-template-columns: 140px minmax(220px, 1fr) 180px minmax(320px, 1.1fr);
+  gap: 12px;
+  align-items: end;
 }
 
 select {
@@ -216,7 +195,7 @@ select:focus {
   flex-wrap: nowrap;
   gap: 8px;
   justify-content: flex-start;
-  grid-column: 1 / -1;
+  margin-top: 12px;
 }
 
 .control-actions button {
@@ -446,23 +425,11 @@ footer {
 }
 
 @media (max-width: 1100px) {
-  .control-panel > .field:nth-of-type(1),
-  .control-fields > .field:nth-child(1) {
-    grid-column: span 3;
+  .control-fields {
+    grid-template-columns: 120px minmax(220px, 1fr) minmax(180px, 0.8fr);
   }
 
-  .control-panel > .field:nth-of-type(2),
-  .control-fields > .field:nth-child(2) {
-    grid-column: span 5;
-  }
-
-  .control-panel > .field:nth-of-type(3),
-  .control-fields > .field:nth-child(3) {
-    grid-column: span 4;
-  }
-
-  .control-panel > .field:nth-of-type(4),
-  .control-fields > .field:nth-child(4) {
+  .add-domain-field {
     grid-column: 1 / -1;
   }
 }
@@ -481,15 +448,12 @@ footer {
     grid-template-columns: 1fr;
   }
 
-  .control-panel > .field:nth-of-type(1),
-  .control-panel > .field:nth-of-type(2),
-  .control-panel > .field:nth-of-type(3),
-  .control-panel > .field:nth-of-type(4),
-  .control-fields > .field:nth-child(1),
-  .control-fields > .field:nth-child(2),
-  .control-fields > .field:nth-child(3),
-  .control-fields > .field:nth-child(4) {
-    grid-column: 1 / -1;
+  .control-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .add-domain-field {
+    grid-column: auto;
   }
 
   .manual-head {
