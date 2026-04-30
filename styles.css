@@ -149,12 +149,15 @@ h1 {
 }
 
 .control-panel {
-  display: grid;
-  grid-template-columns: 120px minmax(180px, 0.8fr) minmax(150px, 0.55fr) minmax(260px, 1fr) auto;
-  gap: 12px;
-  align-items: end;
   padding: 16px;
   margin-bottom: 14px;
+}
+
+.control-fields {
+  display: grid;
+  grid-template-columns: 130px minmax(220px, 1fr) 180px minmax(300px, 1fr);
+  gap: 12px;
+  align-items: end;
 }
 
 select {
@@ -189,9 +192,15 @@ select:focus {
 
 .control-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.control-actions button {
+  min-width: 112px;
+  white-space: nowrap;
 }
 
 .summary-row {
@@ -430,6 +439,10 @@ footer {
     grid-template-columns: 1fr;
   }
 
+  .control-fields {
+    grid-template-columns: 1fr;
+  }
+
   .manual-head {
     display: block;
   }
@@ -440,6 +453,7 @@ footer {
 
   .control-actions {
     justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .control-actions button {
