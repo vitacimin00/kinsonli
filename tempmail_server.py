@@ -18,6 +18,10 @@ import re
 import secrets
 import sqlite3
 import threading
+import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
 from email import policy
@@ -35,6 +39,15 @@ DEFAULT_DOMAIN = "kinsonli.site"
 MAX_BULK_EMAILS = 10
 MESSAGE_TTL_DAYS = 7
 FULL_BODY_ALLOWED_SENDER = "noreply@tm.openai.com"
+API_NAME_MIN_LEN = 13
+API_NAME_MAX_LEN = 15
+ENGLISH_NAT_CODES = "us,gb,au,ca,ie,nz"
+FAKER_API_URLS = [
+    "https://fakerapi.it/api/v2/persons",
+    "https://fakerapi.it/api/v1/persons",
+]
+FAKER_INDONESIA_LOCALE = "id_ID"
+API_TIMEOUT = 15
 
 CODE_PATTERNS = [
     re.compile(r"\b([A-Z0-9]{2,5}-[A-Z0-9]{2,5})\b", re.IGNORECASE),
@@ -176,6 +189,115 @@ def message_to_text(message) -> str:
         return payload.decode(errors="replace")
 
 
+def clean_name_letters(*parts: str) -> str:
+    full_name = "".join(parts).lower()
+    normalized = unicodedata.normalize("NFKD", full_name)
+    return "".join(ch for ch in normalized if "a" <= ch <= "z")
+
+
+def is_valid_base_name(name: str) -> bool:
+    return API_NAME_MIN_LEN <= len(name) <= API_NAME_MAX_LEN
+
+
+def with_random_digits(name: str) -> str:
+    return f"{name}{secrets.randbelow(100):02d}"
+
+
+def fetch_randomuser_names(count: int, nat: str = "") -> list[tuple[str, str]]:
+    url = f"https://randomuser.me/api/?results={count}&inc=name"
+    if nat:
+        url += f"&nat={nat}"
+    req = urllib.request.Request(url, headers={"User-Agent": "TempMailName/1.0"})
+    with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
+        data = json.loads(resp.read().decode())
+    return [
+        (user["name"]["first"], user["name"]["last"])
+        for user in data.get("results", [])
+    ]
+
+
+def fetch_faker_api_names(count: int, locale: str) -> list[tuple[str, str]]:
+    params = urllib.parse.urlencode({
+        "_quantity": count,
+        "_locale": locale,
+        "_seed": secrets.randbelow(999999) + 1,
+    })
+    last_error = None
+
+    for base_url in FAKER_API_URLS:
+        url = f"{base_url}?{params}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "TempMailName/1.0"})
+            with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
+                data = json.loads(resp.read().decode())
+            break
+        except (TimeoutError, urllib.error.URLError, OSError) as err:
+            last_error = err
+    else:
+        raise RuntimeError(f"Faker API tidak merespons: {last_error}")
+
+    names = []
+    for person in data.get("data", []):
+        first = (
+            person.get("firstname")
+            or person.get("firstName")
+            or person.get("first_name")
+            or ""
+        )
+        last = (
+            person.get("lastname")
+            or person.get("lastName")
+            or person.get("last_name")
+            or ""
+        )
+        if not first and not last:
+            first = person.get("name") or person.get("fullname") or ""
+        names.append((first, last))
+    return names
+
+
+def fetch_api_base_names(count: int, source: str) -> list[str]:
+    if count <= 0:
+        return []
+
+    source = source.lower()
+    names = []
+    attempts = 8
+    batch_size = min(120, max(25, count * 3))
+
+    for _ in range(attempts):
+        if source == "indonesia":
+            fetched = fetch_faker_api_names(batch_size, FAKER_INDONESIA_LOCALE)
+        else:
+            fetched = fetch_randomuser_names(batch_size, ENGLISH_NAT_CODES)
+
+        for first, last in fetched:
+            base_name = clean_name_letters(first, last)
+            if is_valid_base_name(base_name):
+                names.append(base_name)
+                if len(names) >= count:
+                    return names
+
+    raise RuntimeError(f"Nama {source} 13-15 huruf belum cukup dari API.")
+
+
+def generate_api_base_names(count: int, source: str) -> list[str]:
+    source = source.lower()
+    if source == "indonesia":
+        return fetch_api_base_names(count, "indonesia")
+    if source == "english":
+        return fetch_api_base_names(count, "english")
+
+    english_count = count // 2
+    indonesia_count = count - english_count
+    names = (
+        fetch_api_base_names(english_count, "english")
+        + fetch_api_base_names(indonesia_count, "indonesia")
+    )
+    secrets.SystemRandom().shuffle(names)
+    return names
+
+
 def store_message(recipient: str, sender: str, subject: str, body: str, raw: str) -> int:
     with db_connect() as conn:
         cursor = conn.execute(
@@ -259,12 +381,20 @@ def generate_local_part() -> str:
     return f"{base}{digits}"
 
 
-def generate_emails(count: int, domain: str) -> list[str]:
+def generate_emails(count: int, domain: str, source: str = "random") -> list[str]:
     count = max(1, min(MAX_BULK_EMAILS, count))
     domain = normalize_domain(domain) or DEFAULT_DOMAIN
     if not is_valid_domain(domain):
         domain = DEFAULT_DOMAIN
+
+    try:
+        local_parts = [with_random_digits(name) for name in generate_api_base_names(count, source)]
+    except Exception:
+        local_parts = [generate_local_part() for _ in range(count)]
+
     emails = set()
+    for local_part in local_parts:
+        emails.add(f"{local_part}@{domain}")
     while len(emails) < count:
         emails.add(f"{generate_local_part()}@{domain}")
     return sorted(emails)
@@ -411,7 +541,8 @@ class TempMailHandler(SimpleHTTPRequestHandler):
         except (TypeError, ValueError):
             count = 10
         domain = payload.get("domain") or DEFAULT_DOMAIN
-        self.write_json({"emails": generate_emails(count, domain)})
+        source = str(payload.get("source") or "random")
+        self.write_json({"emails": generate_emails(count, domain, source)})
 
     def handle_add_domain(self) -> None:
         payload = self.read_json()
