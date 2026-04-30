@@ -35,7 +35,7 @@ from urllib.parse import urlparse
 APP_DIR = Path(__file__).resolve().parent
 DB_PATH = APP_DIR / "tempmail.db"
 DOMAINS_PATH = APP_DIR / "tempmail_domains.json"
-DEFAULT_DOMAIN = "kinsonli.site"
+DEFAULT_DOMAIN = ""
 MAX_BULK_EMAILS = 10
 MESSAGE_TTL_DAYS = 7
 FULL_BODY_ALLOWED_SENDER = "noreply@tm.openai.com"
@@ -118,7 +118,9 @@ def is_valid_domain(value: str) -> bool:
 
 
 def load_domains() -> list[str]:
-    domains = [DEFAULT_DOMAIN]
+    domains = []
+    if DEFAULT_DOMAIN and is_valid_domain(DEFAULT_DOMAIN):
+        domains.append(DEFAULT_DOMAIN)
     try:
         saved = json.loads(DOMAINS_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -139,7 +141,7 @@ def save_domains(domains: list[str]) -> None:
         normalized = normalize_domain(domain)
         if is_valid_domain(normalized) and normalized not in clean_domains:
             clean_domains.append(normalized)
-    if DEFAULT_DOMAIN not in clean_domains:
+    if DEFAULT_DOMAIN and DEFAULT_DOMAIN not in clean_domains:
         clean_domains.insert(0, DEFAULT_DOMAIN)
     DOMAINS_PATH.write_text(
         json.dumps(clean_domains, indent=2, ensure_ascii=False),
@@ -383,9 +385,12 @@ def generate_local_part() -> str:
 
 def generate_emails(count: int, domain: str, source: str = "random") -> list[str]:
     count = max(1, min(MAX_BULK_EMAILS, count))
-    domain = normalize_domain(domain) or DEFAULT_DOMAIN
+    domain = normalize_domain(domain)
     if not is_valid_domain(domain):
-        domain = DEFAULT_DOMAIN
+        domains = load_domains()
+        if not domains:
+            raise ValueError("Tambahkan domain terlebih dahulu.")
+        domain = domains[0]
 
     try:
         local_parts = [with_random_digits(name) for name in generate_api_base_names(count, source)]
@@ -540,9 +545,14 @@ class TempMailHandler(SimpleHTTPRequestHandler):
             count = int(payload.get("count", 10))
         except (TypeError, ValueError):
             count = 10
-        domain = payload.get("domain") or DEFAULT_DOMAIN
+        domain = payload.get("domain") or ""
         source = str(payload.get("source") or "random")
-        self.write_json({"emails": generate_emails(count, domain, source)})
+        try:
+            emails = generate_emails(count, domain, source)
+        except ValueError as err:
+            self.write_json({"error": str(err)}, HTTPStatus.BAD_REQUEST)
+            return
+        self.write_json({"emails": emails})
 
     def handle_add_domain(self) -> None:
         payload = self.read_json()
