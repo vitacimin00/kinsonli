@@ -381,12 +381,17 @@ def generate_local_part() -> str:
 
 def generate_emails(count: int, domain: str, source: str = "random") -> list[str]:
     count = max(1, min(MAX_BULK_EMAILS, count))
-    domain = normalize_domain(domain)
-    if not is_valid_domain(domain):
-        domains = load_domains()
-        if not domains:
-            raise ValueError("Tambahkan domain terlebih dahulu.")
-        domain = domains[0]
+    domains = load_domains()
+    if not domains:
+        raise ValueError("Tambahkan domain terlebih dahulu.")
+
+    raw_domain = normalize_domain(domain)
+    use_random_domain = raw_domain in ("__random__", "") or not is_valid_domain(raw_domain)
+
+    def pick_domain() -> str:
+        if use_random_domain:
+            return secrets.choice(domains)
+        return raw_domain
 
     try:
         local_parts = [with_random_digits(name) for name in generate_api_base_names(count, source)]
@@ -395,9 +400,9 @@ def generate_emails(count: int, domain: str, source: str = "random") -> list[str
 
     emails = set()
     for local_part in local_parts:
-        emails.add(f"{local_part}@{domain}")
+        emails.add(f"{local_part}@{pick_domain()}")
     while len(emails) < count:
-        emails.add(f"{generate_local_part()}@{domain}")
+        emails.add(f"{generate_local_part()}@{pick_domain()}")
     return sorted(emails)
 
 
