@@ -282,10 +282,10 @@ async function addDomain() {
 
 function getSelectedDomain() {
   const val = els.domainSelect.value;
-  if (val === "__random__" && state.domains.length > 0) {
-    return state.domains[Math.floor(Math.random() * state.domains.length)];
+  if (val === "__random__") {
+    return "__random__"; // Let backend assign random domain per-email
   }
-  return val || (state.domains[0] || "");
+  return val || "";
 }
 
 async function generateEmails() {
@@ -296,7 +296,7 @@ async function generateEmails() {
   const domain = getSelectedDomain();
   const source = els.nameSourceSelect.value;
 
-  if (!domain || domain === "__random__") {
+  if (!domain && !state.domains.length) {
     showToast("Tambah domain dulu sebelum generate!", "error");
     return;
   }
