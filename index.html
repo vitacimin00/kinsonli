@@ -3,97 +3,157 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kinsonli Bulk TempMail</title>
-  <link rel="stylesheet" href="styles.css?v=4">
+  <title>ShadowMail — Temporary Email</title>
+  <meta name="description" content="Bulk temporary email generator with auto inbox checker and full body viewer">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
-  <main class="shell">
-    <section class="topbar">
-      <div>
-        <p class="eyebrow">Kinsonli TempMail</p>
-        <h1>Bulk inbox code checker</h1>
-      </div>
-      <div class="status-pill" id="statusPill">Idle</div>
-    </section>
 
-    <section class="control-panel">
-      <div class="control-fields">
+  <!-- ═══ Top Bar ═══ -->
+  <header id="topBar">
+    <div class="top-left">
+      <div class="logo-mark">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+          <polyline points="22,6 12,13 2,6"/>
+        </svg>
+      </div>
+      <div>
+        <h1>ShadowMail</h1>
+        <p class="subtitle">Temporary Email Generator</p>
+      </div>
+    </div>
+    <div class="top-right">
+      <div class="status-indicator" id="statusIndicator">
+        <span class="status-dot"></span>
+        <span class="status-text" id="statusText">Idle</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <!-- ═══ Generate Panel ═══ -->
+    <section class="panel generate-panel" id="generatePanel">
+      <div class="panel-header">
+        <div class="panel-icon">⚡</div>
+        <div>
+          <h2>Bulk Generate</h2>
+          <p class="panel-desc">Generate email sementara, auto-check inbox setiap 5 detik</p>
+        </div>
+      </div>
+
+      <div class="generate-controls">
         <div class="field">
-          <label for="countInput">Jumlah email</label>
-          <input id="countInput" type="number" min="1" max="10" value="10">
+          <label for="countInput">Jumlah</label>
+          <input id="countInput" type="number" min="1" max="10" value="5" placeholder="1-10">
         </div>
         <div class="field">
-        <label for="domainSelect">Domain</label>
-        <select id="domainSelect">
-            <option value="" disabled selected>Tambah domain dulu</option>
+          <label for="domainSelect">Domain</label>
+          <select id="domainSelect">
+            <option value="__random__">🎲 Random Domain</option>
           </select>
         </div>
         <div class="field">
-          <label for="nameSourceSelect">Sumber nama</label>
+          <label for="nameSourceSelect">Sumber Nama</label>
           <select id="nameSourceSelect">
-            <option value="random">Random</option>
-            <option value="english">English</option>
-            <option value="indonesia">Indonesia</option>
+            <option value="random">🌍 Random</option>
+            <option value="english">🇬🇧 English</option>
+            <option value="indonesia">🇮🇩 Indonesia</option>
           </select>
         </div>
-        <div class="field add-domain-field">
-          <label for="customDomainInput">Tambah domain</label>
-          <div class="inline-field">
-            <input id="customDomainInput" type="text" placeholder="domainbaru.com">
-            <button id="addDomainBtn" type="button" class="secondary">Tambah</button>
+        <div class="field field-actions">
+          <label>&nbsp;</label>
+          <div class="btn-group">
+            <button id="generateBtn" type="button" class="btn btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Generate
+            </button>
+            <button id="copyAllBtn" type="button" class="btn btn-ghost" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              Copy All
+            </button>
+            <button id="clearBtn" type="button" class="btn btn-danger" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+              Clear All
+            </button>
           </div>
         </div>
       </div>
-      <div class="control-actions">
-        <button id="generateBtn" type="button">Generate</button>
-        <button id="checkBtn" type="button" class="secondary" disabled>Cek Inbox</button>
-        <button id="stopBtn" type="button" class="secondary" disabled>Stop</button>
-        <button id="copyAllBtn" type="button" class="secondary" disabled>Copy Email</button>
-        <button id="clearBtn" type="button" class="danger">Clear</button>
+
+      <!-- Add Domain inline -->
+      <div class="add-domain-row">
+        <input id="customDomainInput" type="text" placeholder="Tambah domain baru, misal: domain.com">
+        <button id="addDomainBtn" type="button" class="btn btn-ghost">+ Domain</button>
       </div>
     </section>
 
-    <section class="summary-row">
-      <div>
-        <span>Generated</span>
-        <strong id="generatedCount">0</strong>
+    <!-- ═══ Stats ═══ -->
+    <section class="stats-bar" id="statsBar">
+      <div class="stat">
+        <span class="stat-value" id="generatedCount">0</span>
+        <span class="stat-label">Generated</span>
       </div>
-      <div>
-        <span>Found</span>
-        <strong id="foundCount">0</strong>
+      <div class="stat stat-found">
+        <span class="stat-value" id="foundCount">0</span>
+        <span class="stat-label">Code Found</span>
       </div>
-      <div>
-        <span>Waiting</span>
-        <strong id="waitingCount">0</strong>
+      <div class="stat stat-waiting">
+        <span class="stat-value" id="waitingCount">0</span>
+        <span class="stat-label">Waiting</span>
+      </div>
+      <div class="stat stat-poll">
+        <span class="stat-value" id="pollInfo">—</span>
+        <span class="stat-label">Polling</span>
       </div>
     </section>
 
+    <!-- ═══ Email Grid ═══ -->
     <section id="mailGrid" class="mail-grid">
-      <div class="empty-state">Generate email dulu untuk mulai cek inbox.</div>
+      <div class="empty-state">
+        <div class="empty-icon">📬</div>
+        <p>Pilih jumlah email dan klik <strong>Generate</strong> untuk mulai.</p>
+      </div>
     </section>
 
-    <section class="manual-panel">
-      <div class="manual-head">
-        <div>
-          <p class="eyebrow">Manual Checker</p>
-          <h2>Cek 1 email</h2>
+    <!-- ═══ Divider ═══ -->
+    <div class="section-divider">
+      <span>📨 Manual Inbox Viewer</span>
+    </div>
+
+    <!-- ═══ Manual Inbox ═══ -->
+    <section class="panel manual-panel" id="manualPanel">
+      <div class="manual-top">
+        <div class="manual-input-row">
+          <input id="manualEmailInput" type="email" placeholder="Masukkan alamat email untuk lihat inbox...">
+          <button id="manualCheckBtn" type="button" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Cek Inbox
+          </button>
         </div>
-        <span class="muted">Full body hanya untuk noreply@tm.openai.com</span>
       </div>
-      <div class="manual-controls">
-        <input id="manualEmailInput" type="email" placeholder="nama@domainkamu.com">
-        <button id="manualCheckBtn" type="button">Cek Email</button>
-      </div>
-      <div id="manualResult" class="manual-result">
-        Masukkan alamat email untuk melihat email terbaru.
+
+      <div class="inbox-viewer" id="inboxViewer">
+        <div class="inbox-list" id="inboxList">
+          <div class="inbox-empty">
+            <p>Masukkan email untuk melihat semua pesan masuk.</p>
+          </div>
+        </div>
+        <div class="inbox-body" id="inboxBody">
+          <div class="inbox-empty">
+            <p>Pilih pesan dari daftar untuk melihat isi email.</p>
+          </div>
+        </div>
       </div>
     </section>
 
     <footer>
-      API local: <code>/api/generate</code>, <code>/api/inbox/bulk</code>, dan <code>/api/inbox/detail</code>
+      <span>ShadowMail &mdash; Pesan otomatis dihapus setelah 24 jam</span>
     </footer>
   </main>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
