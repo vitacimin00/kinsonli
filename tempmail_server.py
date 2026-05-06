@@ -388,21 +388,20 @@ def generate_emails(count: int, domain: str, source: str = "random") -> list[str
     raw_domain = normalize_domain(domain)
     use_random_domain = raw_domain in ("__random__", "") or not is_valid_domain(raw_domain)
 
-    def pick_domain() -> str:
-        if use_random_domain:
-            return secrets.choice(domains)
-        return raw_domain
-
     try:
         local_parts = [with_random_digits(name) for name in generate_api_base_names(count, source)]
     except Exception:
         local_parts = [generate_local_part() for _ in range(count)]
 
     emails = set()
-    for local_part in local_parts:
-        emails.add(f"{local_part}@{pick_domain()}")
+    for i, local_part in enumerate(local_parts):
+        d = domains[i % len(domains)] if use_random_domain else raw_domain
+        emails.add(f"{local_part}@{d}")
+    idx = len(local_parts)
     while len(emails) < count:
-        emails.add(f"{generate_local_part()}@{pick_domain()}")
+        d = domains[idx % len(domains)] if use_random_domain else raw_domain
+        emails.add(f"{generate_local_part()}@{d}")
+        idx += 1
     return sorted(emails)
 
 
