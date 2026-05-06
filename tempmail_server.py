@@ -48,7 +48,7 @@ FAKER_API_URLS = [
     "https://fakerapi.it/api/v1/persons",
 ]
 FAKER_INDONESIA_LOCALE = "id_ID"
-API_TIMEOUT = 15
+API_TIMEOUT = 7
 
 CODE_PATTERNS = [
     re.compile(r"\b([A-Z0-9]{2,5}-[A-Z0-9]{2,5})\b", re.IGNORECASE),
@@ -207,6 +207,111 @@ def with_random_digits(name: str) -> str:
     return f"{name}{secrets.randbelow(100):02d}"
 
 
+# ─── Built-in Name Lists (instant, no API call) ───
+
+ENGLISH_FIRST = [
+    "james", "john", "robert", "michael", "david", "william", "richard", "joseph",
+    "thomas", "charles", "christopher", "daniel", "matthew", "anthony", "donald",
+    "steven", "andrew", "joshua", "kenneth", "kevin", "brian", "george", "timothy",
+    "ronald", "jason", "edward", "jeffrey", "ryan", "jacob", "gary", "nicholas",
+    "eric", "jonathan", "stephen", "larry", "justin", "scott", "brandon", "benjamin",
+    "samuel", "mary", "patricia", "jennifer", "linda", "elizabeth", "barbara",
+    "susan", "jessica", "sarah", "karen", "lisa", "nancy", "betty", "margaret",
+    "sandra", "ashley", "dorothy", "kimberly", "emily", "donna", "michelle",
+    "carol", "amanda", "melissa", "deborah", "stephanie", "rebecca", "sharon",
+    "laura", "cynthia", "kathleen", "amy", "angela", "shirley", "anna", "brenda",
+    "pamela", "emma", "nicole", "helen", "samantha", "katherine", "christine",
+]
+
+ENGLISH_LAST = [
+    "smith", "johnson", "williams", "brown", "jones", "garcia", "miller", "davis",
+    "rodriguez", "martinez", "hernandez", "lopez", "gonzalez", "wilson", "anderson",
+    "thomas", "taylor", "moore", "jackson", "martin", "lee", "thompson", "white",
+    "harris", "sanchez", "clark", "ramirez", "lewis", "robinson", "walker", "young",
+    "allen", "king", "wright", "scott", "torres", "nguyen", "hill", "flores",
+    "green", "adams", "nelson", "baker", "hall", "rivera", "campbell", "mitchell",
+    "carter", "roberts", "gomez", "phillips", "evans", "turner", "diaz", "parker",
+    "cruz", "edwards", "collins", "reyes", "stewart", "morris", "morales", "murphy",
+    "cook", "rogers", "gutierrez", "ortiz", "morgan", "cooper", "peterson", "bailey",
+    "reed", "kelly", "howard", "ramos", "kim", "cox", "ward", "richardson",
+    "watson", "brooks", "chavez", "wood", "james", "bennett", "gray", "mendoza",
+]
+
+INDO_FIRST = [
+    "andi", "budi", "cahya", "dimas", "eko", "fajar", "guntur", "hadi",
+    "irfan", "joko", "kurnia", "lukman", "maulana", "nanda", "okta", "putra",
+    "rahmat", "surya", "teguh", "utomo", "wahyu", "yoga", "zainal", "agung",
+    "arief", "bayu", "candra", "dani", "firdaus", "gilang", "rizky", "ilham",
+    "rudi", "setya", "ardi", "bagus", "dewi", "fitri", "indah", "kartika",
+    "lestari", "mega", "nadia", "putri", "rina", "sari", "tika", "ulan",
+    "wulan", "yuni", "ayu", "anggi", "bunga", "citra", "dian", "endang",
+    "febi", "gita", "hasna", "intan", "jihan", "kirana", "laras", "melati",
+    "nurul", "okti", "priya", "ratna", "sinta", "tiara", "ulfa", "vina",
+    "widya", "yasmin", "zahra", "anisa", "bella", "clara", "dinda", "elsa",
+]
+
+INDO_LAST = [
+    "pratama", "saputra", "wijaya", "hidayat", "nugraha", "permana", "kusuma",
+    "purnama", "santoso", "wibowo", "setiawan", "hartono", "suryadi", "utami",
+    "rahayu", "lestari", "handayani", "puspita", "wulandari", "anggraini",
+    "susanto", "gunawan", "hermawan", "firmansyah", "kurniawan", "ramadhan",
+    "fitriani", "maharani", "cahyani", "damayanti", "kuswanto", "prasetyo",
+    "sugiarto", "mulyadi", "iskandar", "abdullah", "budiman", "halim",
+    "mahendra", "winarsih", "suryanata", "prabowo", "sudirman", "suharto",
+    "hariyanto", "wahyudi", "febrianto", "oktaviani", "kusumaningrum",
+    "widyaningrum", "cahyono", "wicaksono", "arianto", "hendrawan",
+    "syahputra", "harahap", "siregar", "nasution", "lubis", "simanjuntak",
+    "panjaitan", "sitompul", "hutapea", "manurung", "pardede", "situmorang",
+    "saragih", "siahaan", "tampubolon", "sinaga", "aritonang", "napitupulu",
+]
+
+
+def generate_local_names(count: int, source: str) -> list[str]:
+    """Generate names instantly from built-in lists. No API call."""
+    rng = secrets.SystemRandom()
+
+    if source == "indonesia":
+        firsts, lasts = INDO_FIRST, INDO_LAST
+    elif source == "english":
+        firsts, lasts = ENGLISH_FIRST, ENGLISH_LAST
+    else:
+        # Mix: alternate between english and indonesian
+        firsts = ENGLISH_FIRST + INDO_FIRST
+        lasts = ENGLISH_LAST + INDO_LAST
+
+    names: list[str] = []
+    seen: set[str] = set()
+    max_attempts = count * 10
+
+    for _ in range(max_attempts):
+        first = rng.choice(firsts)
+        last = rng.choice(lasts)
+        base = clean_name_letters(first, last)
+        if is_valid_base_name(base) and base not in seen:
+            seen.add(base)
+            names.append(base)
+            if len(names) >= count:
+                break
+
+    # Fallback: pad with consonant-vowel names if not enough
+    while len(names) < count:
+        names.append(generate_local_part_name())
+
+    return names
+
+
+def generate_local_part_name() -> str:
+    """Fallback: generate a pronounceable name-like string."""
+    consonants = "bcdfghjklmnprstvw"
+    vowels = "aiueo"
+    length = secrets.choice([6, 7])
+    return "".join(
+        secrets.choice(consonants) + secrets.choice(vowels) for _ in range(length)
+    )
+
+
+# ─── API-based names (optional fallback, slower) ───
+
 def fetch_randomuser_names(count: int, nat: str = "") -> list[tuple[str, str]]:
     url = f"https://randomuser.me/api/?results={count}&inc=name"
     if nat:
@@ -260,46 +365,35 @@ def fetch_faker_api_names(count: int, locale: str) -> list[tuple[str, str]]:
     return names
 
 
-def fetch_api_base_names(count: int, source: str) -> list[str]:
-    if count <= 0:
-        return []
-
+def generate_api_base_names(count: int, source: str) -> list[str]:
+    """Try API once (7s timeout), fallback to built-in names."""
     source = source.lower()
-    names = []
-    attempts = 8
-    batch_size = min(120, max(25, count * 3))
+    batch_size = min(50, max(15, count * 3))
 
-    for _ in range(attempts):
+    try:
         if source == "indonesia":
             fetched = fetch_faker_api_names(batch_size, FAKER_INDONESIA_LOCALE)
-        else:
+        elif source == "english":
             fetched = fetch_randomuser_names(batch_size, ENGLISH_NAT_CODES)
+        else:
+            half = batch_size // 2
+            fetched = (
+                fetch_randomuser_names(half, ENGLISH_NAT_CODES)
+                + fetch_faker_api_names(batch_size - half, FAKER_INDONESIA_LOCALE)
+            )
 
+        names = []
         for first, last in fetched:
-            base_name = clean_name_letters(first, last)
-            if is_valid_base_name(base_name):
-                names.append(base_name)
+            base = clean_name_letters(first, last)
+            if is_valid_base_name(base):
+                names.append(base)
                 if len(names) >= count:
                     return names
+    except Exception:
+        pass  # API gagal, lanjut ke built-in
 
-    raise RuntimeError(f"Nama {source} 13-15 huruf belum cukup dari API.")
-
-
-def generate_api_base_names(count: int, source: str) -> list[str]:
-    source = source.lower()
-    if source == "indonesia":
-        return fetch_api_base_names(count, "indonesia")
-    if source == "english":
-        return fetch_api_base_names(count, "english")
-
-    english_count = count // 2
-    indonesia_count = count - english_count
-    names = (
-        fetch_api_base_names(english_count, "english")
-        + fetch_api_base_names(indonesia_count, "indonesia")
-    )
-    secrets.SystemRandom().shuffle(names)
-    return names
+    # Fallback: built-in names (instant)
+    return generate_local_names(count, source)
 
 
 def store_message(recipient: str, sender: str, subject: str, body: str, raw: str) -> int:
