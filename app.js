@@ -1,423 +1,679 @@
-const API_BASE = "";
-const MAX_EMAILS = 10;
-const POLL_MS = 5000;
-const MAX_POLLS = 10;
+/* ═══════════════════════════════════════════════════
+   ShadowMail — Frontend Logic
+   ═══════════════════════════════════════════════════ */
 
+const API = "";
+const MAX_EMAILS = 10;
+const POLL_INTERVAL_MS = 5000;
+const STORAGE_KEY = "shadowmail_emails";
+
+/* ─── State ─── */
 const state = {
   emails: [],
-  inbox: new Map(),
+  inbox: new Map(),     // email -> { code, from, subject, received_at }
   pollTimer: null,
   pollCount: 0,
-  checking: false,
+  polling: false,
+  domains: [],
+  manualMessages: [],   // all messages for manual viewer
+  activeMessageId: null,
 };
 
+/* ─── DOM ─── */
+const $ = (sel) => document.querySelector(sel);
 const els = {
-  statusPill: document.querySelector("#statusPill"),
-  countInput: document.querySelector("#countInput"),
-  domainSelect: document.querySelector("#domainSelect"),
-  nameSourceSelect: document.querySelector("#nameSourceSelect"),
-  customDomainInput: document.querySelector("#customDomainInput"),
-  addDomainBtn: document.querySelector("#addDomainBtn"),
-  generateBtn: document.querySelector("#generateBtn"),
-  checkBtn: document.querySelector("#checkBtn"),
-  stopBtn: document.querySelector("#stopBtn"),
-  copyAllBtn: document.querySelector("#copyAllBtn"),
-  clearBtn: document.querySelector("#clearBtn"),
-  generatedCount: document.querySelector("#generatedCount"),
-  foundCount: document.querySelector("#foundCount"),
-  waitingCount: document.querySelector("#waitingCount"),
-  mailGrid: document.querySelector("#mailGrid"),
-  manualEmailInput: document.querySelector("#manualEmailInput"),
-  manualCheckBtn: document.querySelector("#manualCheckBtn"),
-  manualResult: document.querySelector("#manualResult"),
+  statusIndicator: $("#statusIndicator"),
+  statusText: $("#statusText"),
+  countInput: $("#countInput"),
+  domainSelect: $("#domainSelect"),
+  nameSourceSelect: $("#nameSourceSelect"),
+  customDomainInput: $("#customDomainInput"),
+  addDomainBtn: $("#addDomainBtn"),
+  generateBtn: $("#generateBtn"),
+  copyAllBtn: $("#copyAllBtn"),
+  clearBtn: $("#clearBtn"),
+  generatedCount: $("#generatedCount"),
+  foundCount: $("#foundCount"),
+  waitingCount: $("#waitingCount"),
+  pollInfo: $("#pollInfo"),
+  mailGrid: $("#mailGrid"),
+  manualEmailInput: $("#manualEmailInput"),
+  manualCheckBtn: $("#manualCheckBtn"),
+  inboxList: $("#inboxList"),
+  inboxBody: $("#inboxBody"),
 };
+
+/* ═══ Utilities ═══ */
 
 function setStatus(text, type = "") {
-  els.statusPill.textContent = text;
-  els.statusPill.className = `status-pill ${type}`.trim();
+  els.statusText.textContent = text;
+  els.statusIndicator.className = `status-indicator ${type}`.trim();
 }
 
-function clampCount(value) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) {
-    return MAX_EMAILS;
+function clamp(val, min, max) {
+  const n = parseInt(val, 10);
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalizeDomain(v) {
+  return v.trim().toLowerCase().replace(/^@+/, "");
+}
+
+function showToast(text, type = "") {
+  const existing = document.querySelector(".toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`.trim();
+  toast.textContent = text;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2200);
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  try {
+    return new Intl.DateTimeFormat("id-ID", {
+      dateStyle: "medium",
+      timeStyle: "medium",
+    }).format(new Date(value));
+  } catch {
+    return value;
   }
-  return Math.max(1, Math.min(MAX_EMAILS, parsed));
 }
 
-function normalizeDomain(value) {
-  return value.trim().toLowerCase().replace(/^@+/, "");
+function formatTime(value) {
+  if (!value) return "";
+  try {
+    return new Intl.DateTimeFormat("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return "";
+  }
 }
 
-async function api(path, body) {
-  const response = await fetch(`${API_BASE}${path}`, {
+async function copyToClipboard(text, label = "Copied!") {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(label, "success");
+  } catch {
+    showToast("Gagal copy", "error");
+  }
+}
+
+/* ═══ API Helpers ═══ */
+
+async function apiPost(path, body) {
+  const res = await fetch(`${API}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || response.statusText);
-  }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
 
 async function apiGet(path) {
-  const response = await fetch(`${API_BASE}${path}`);
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || response.statusText);
-  }
+  const res = await fetch(`${API}${path}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
 
-async function generateEmails() {
-  stopChecking();
-  setStatus("Generating");
+/* ═══ LocalStorage ═══ */
 
+function saveToStorage() {
+  const payload = {
+    emails: state.emails,
+    inbox: Object.fromEntries(state.inbox),
+    savedAt: Date.now(),
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+}
+
+function loadFromStorage() {
   try {
-    const count = clampCount(els.countInput.value);
-    const domain = normalizeDomain(els.domainSelect.value);
-    const source = els.nameSourceSelect.value;
-    els.countInput.value = String(count);
-
-    const data = await api("/api/generate", { count, domain, source });
-    state.emails = data.emails || [];
-    state.inbox = new Map();
-    render();
-    setStatus("Ready", "ok");
-  } catch (error) {
-    setStatus("Error", "error");
-    showError(error.message);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const payload = JSON.parse(raw);
+    // Expire after 24h
+    if (Date.now() - payload.savedAt > 24 * 60 * 60 * 1000) {
+      localStorage.removeItem(STORAGE_KEY);
+      return false;
+    }
+    state.emails = payload.emails || [];
+    state.inbox = new Map(Object.entries(payload.inbox || {}));
+    return state.emails.length > 0;
+  } catch {
+    return false;
   }
 }
 
-async function loadDomains(selectedDomain = "") {
+function clearStorage() {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+/* ═══ Domains ═══ */
+
+async function loadDomains() {
   try {
     const data = await apiGet("/api/domains");
-    renderDomains(data.domains || [], selectedDomain);
-  } catch (error) {
-    setStatus("Domain error", "error");
-    renderDomains([], selectedDomain);
+    state.domains = (data.domains || []).map(normalizeDomain).filter(Boolean);
+    renderDomains();
+  } catch {
+    state.domains = [];
+    renderDomains();
   }
 }
 
-function renderDomains(domains, selectedDomain = "") {
-  const current = normalizeDomain(selectedDomain || els.domainSelect.value || "");
+function renderDomains() {
+  const current = normalizeDomain(els.domainSelect.value || "");
   els.domainSelect.innerHTML = "";
 
-  const unique = [...new Set(domains.map(normalizeDomain).filter(Boolean))];
-  if (!unique.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "Tambah domain dulu";
-    option.disabled = true;
-    option.selected = true;
-    els.domainSelect.appendChild(option);
-    return;
-  }
+  // Random option
+  const randomOpt = document.createElement("option");
+  randomOpt.value = "__random__";
+  randomOpt.textContent = "🎲 Random Domain";
+  els.domainSelect.appendChild(randomOpt);
 
-  unique.forEach((domain) => {
-    const option = document.createElement("option");
-    option.value = domain;
-    option.textContent = domain;
-    option.selected = domain === current;
-    els.domainSelect.appendChild(option);
+  state.domains.forEach((d) => {
+    const opt = document.createElement("option");
+    opt.value = d;
+    opt.textContent = d;
+    if (d === current) opt.selected = true;
+    els.domainSelect.appendChild(opt);
   });
 }
 
-async function addCustomDomain() {
+async function addDomain() {
   const domain = normalizeDomain(els.customDomainInput.value);
-  if (!domain) {
-    return;
-  }
+  if (!domain) return;
 
-  setStatus("Saving");
   try {
-    const data = await api("/api/domains", { domain });
-    renderDomains(data.domains || [], data.domain || domain);
+    const data = await apiPost("/api/domains", { domain });
+    state.domains = (data.domains || []).map(normalizeDomain).filter(Boolean);
+    renderDomains();
+    // Select the new domain
+    els.domainSelect.value = data.domain || domain;
     els.customDomainInput.value = "";
-    setStatus("Saved", "ok");
-  } catch (error) {
-    setStatus("Error", "error");
-    showError(error.message);
+    showToast(`Domain ${domain} ditambahkan!`, "success");
+  } catch (err) {
+    showToast(err.message, "error");
   }
 }
 
-async function checkInboxOnce() {
-  if (!state.emails.length) {
+/* ═══ Generate Emails ═══ */
+
+function getSelectedDomain() {
+  const val = els.domainSelect.value;
+  if (val === "__random__" && state.domains.length > 0) {
+    return state.domains[Math.floor(Math.random() * state.domains.length)];
+  }
+  return val || (state.domains[0] || "");
+}
+
+async function generateEmails() {
+  stopPolling();
+
+  const count = clamp(els.countInput.value, 1, MAX_EMAILS);
+  els.countInput.value = count;
+  const domain = getSelectedDomain();
+  const source = els.nameSourceSelect.value;
+
+  if (!domain || domain === "__random__") {
+    showToast("Tambah domain dulu sebelum generate!", "error");
     return;
   }
 
-  setStatus(`Checking ${state.pollCount + 1}/${MAX_POLLS}`);
+  setStatus("Generating...", "generating");
+  els.generateBtn.disabled = true;
 
   try {
-    const data = await api("/api/inbox/bulk", { emails: state.emails });
-    for (const result of data.results || []) {
-      if (result.message) {
-        state.inbox.set(result.email, result.message);
-      }
-    }
-    state.pollCount += 1;
-    render();
+    const data = await apiPost("/api/generate", { count, domain, source });
+    state.emails = data.emails || [];
+    state.inbox = new Map();
+    saveToStorage();
+    renderGrid();
+    updateStats();
+    showToast(`${state.emails.length} email berhasil di-generate`, "success");
 
-    const foundAll = state.emails.every((email) => state.inbox.has(email));
-    if (foundAll) {
-      stopChecking("Complete", "ok");
-      return;
-    }
-    if (state.pollCount >= MAX_POLLS) {
-      stopChecking("Timeout", "error");
-    }
-  } catch (error) {
-    stopChecking("Error", "error");
-    showError(error.message);
+    // Auto-start polling
+    startPolling();
+  } catch (err) {
+    setStatus("Error", "error");
+    showError(err.message);
+  } finally {
+    els.generateBtn.disabled = false;
   }
 }
 
-function startChecking() {
-  if (!state.emails.length || state.checking) {
-    return;
-  }
+/* ═══ Polling ═══ */
 
-  state.checking = true;
+function startPolling() {
+  if (!state.emails.length || state.polling) return;
+
+  state.polling = true;
   state.pollCount = 0;
-  els.checkBtn.disabled = true;
-  els.stopBtn.disabled = false;
-  checkInboxOnce();
-  state.pollTimer = window.setInterval(checkInboxOnce, POLL_MS);
+  setStatus("Polling", "polling");
+
+  // Immediate first check
+  pollOnce();
+  state.pollTimer = setInterval(pollOnce, POLL_INTERVAL_MS);
 }
 
-function stopChecking(status = "Stopped", type = "") {
+function stopPolling() {
   if (state.pollTimer) {
-    window.clearInterval(state.pollTimer);
+    clearInterval(state.pollTimer);
     state.pollTimer = null;
   }
-  state.checking = false;
-  els.checkBtn.disabled = !state.emails.length;
-  els.stopBtn.disabled = true;
-  if (status) {
-    setStatus(status, type);
+  state.polling = false;
+}
+
+async function pollOnce() {
+  if (!state.emails.length) {
+    stopPolling();
+    return;
+  }
+
+  state.pollCount++;
+  els.pollInfo.textContent = `#${state.pollCount}`;
+  setStatus(`Polling #${state.pollCount}`, "polling");
+
+  try {
+    const data = await apiPost("/api/inbox/bulk", { emails: state.emails });
+    let newFound = false;
+
+    for (const result of data.results || []) {
+      if (result.message && !state.inbox.has(result.email)) {
+        state.inbox.set(result.email, result.message);
+        newFound = true;
+      }
+    }
+
+    if (newFound) {
+      saveToStorage();
+    }
+
+    renderGrid();
+    updateStats();
+
+    // Check if all found
+    const allFound = state.emails.every((e) => state.inbox.has(e));
+    if (allFound) {
+      stopPolling();
+      setStatus("All Found", "ok");
+      showToast("Semua email sudah mendapat kode!", "success");
+    }
+  } catch {
+    // Keep polling on error, don't stop
   }
 }
 
-function clearAll() {
-  stopChecking("Idle");
-  state.emails = [];
-  state.inbox = new Map();
-  render();
-}
+/* ═══ Render Grid ═══ */
 
-function render() {
-  const found = state.emails.filter((email) => state.inbox.has(email)).length;
+function updateStats() {
+  const found = state.emails.filter((e) => state.inbox.has(e)).length;
   const waiting = state.emails.length - found;
 
-  els.generatedCount.textContent = String(state.emails.length);
-  els.foundCount.textContent = String(found);
-  els.waitingCount.textContent = String(waiting);
-  els.checkBtn.disabled = !state.emails.length || state.checking;
+  els.generatedCount.textContent = state.emails.length;
+  els.foundCount.textContent = found;
+  els.waitingCount.textContent = waiting;
   els.copyAllBtn.disabled = !state.emails.length;
+  els.clearBtn.disabled = !state.emails.length;
 
+  if (!state.polling && state.emails.length) {
+    const hasWaiting = waiting > 0;
+    if (hasWaiting) {
+      setStatus("Idle", "");
+    } else {
+      setStatus("Complete", "ok");
+    }
+  }
+}
+
+function renderGrid() {
   if (!state.emails.length) {
-    els.mailGrid.innerHTML = '<div class="empty-state">Generate email dulu untuk mulai cek inbox.</div>';
+    els.mailGrid.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📬</div>
+        <p>Pilih jumlah email dan klik <strong>Generate</strong> untuk mulai.</p>
+      </div>`;
     return;
   }
 
   els.mailGrid.innerHTML = "";
   state.emails.forEach((email) => {
-    els.mailGrid.appendChild(renderEmailCard(email, state.inbox.get(email)));
+    els.mailGrid.appendChild(createMailCard(email, state.inbox.get(email)));
   });
 }
 
-function renderEmailCard(email, message) {
+function createMailCard(email, message) {
   const card = document.createElement("article");
   card.className = `mail-card ${message ? "found" : "waiting"}`;
 
-  const top = document.createElement("div");
-  top.className = "mail-card-top";
+  const header = document.createElement("div");
+  header.className = "mail-card-header";
 
-  const emailText = document.createElement("strong");
-  emailText.textContent = email;
+  const emailEl = document.createElement("span");
+  emailEl.className = "mail-email";
+  emailEl.textContent = email;
+  emailEl.title = "Click to copy email";
+  emailEl.addEventListener("click", () => copyToClipboard(email, "Email copied!"));
 
   const badge = document.createElement("span");
-  badge.className = "badge";
-  badge.textContent = message ? "Found" : "Waiting";
+  badge.className = `mail-badge ${message ? "found" : "waiting"}`;
+  badge.textContent = message ? "Code Found" : "Waiting";
 
-  top.append(emailText, badge);
-  card.appendChild(top);
+  header.append(emailEl, badge);
+  card.appendChild(header);
 
-  if (!message) {
-    const waiting = document.createElement("p");
-    waiting.className = "muted";
-    waiting.textContent = "Menunggu kode...";
-    card.appendChild(waiting);
-    return card;
+  if (message) {
+    const codeArea = document.createElement("div");
+    codeArea.className = "mail-code-area";
+
+    const codeEl = document.createElement("span");
+    if (message.code) {
+      codeEl.className = "mail-code";
+      codeEl.textContent = message.code;
+    } else {
+      codeEl.className = "mail-code no-code";
+      codeEl.textContent = "No code detected";
+    }
+
+    codeArea.appendChild(codeEl);
+
+    if (message.code) {
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "btn-copy-code";
+      copyBtn.textContent = "Copy Code";
+      copyBtn.addEventListener("click", () => copyToClipboard(message.code, "Code copied!"));
+      codeArea.appendChild(copyBtn);
+    }
+
+    card.appendChild(codeArea);
+  } else {
+    const waitRow = document.createElement("div");
+    waitRow.className = "mail-code-area";
+    waitRow.innerHTML = `
+      <span class="mail-waiting-text">Menunggu email masuk
+        <span class="mail-waiting-dots"><span></span><span></span><span></span></span>
+      </span>
+      <button class="btn-copy-email" onclick="event.stopPropagation()">Copy Email</button>`;
+    waitRow.querySelector(".btn-copy-email").addEventListener("click", () => {
+      copyToClipboard(email, "Email copied!");
+    });
+    card.appendChild(waitRow);
   }
-
-  const codeRow = document.createElement("div");
-  codeRow.className = "code-row";
-  const code = document.createElement("strong");
-  code.textContent = message.code || "Tidak terdeteksi";
-  const copyBtn = document.createElement("button");
-  copyBtn.type = "button";
-  copyBtn.className = "secondary";
-  copyBtn.textContent = "Copy Code";
-  copyBtn.disabled = !message.code;
-  copyBtn.addEventListener("click", () => copyText(message.code, "Copied"));
-  codeRow.append(code, copyBtn);
-  card.appendChild(codeRow);
 
   return card;
 }
 
-function showError(message) {
-  els.mailGrid.innerHTML = "";
-  const box = document.createElement("div");
-  box.className = "empty-state error-box";
-  box.textContent = message || "Request gagal.";
-  els.mailGrid.appendChild(box);
+function showError(msg) {
+  els.mailGrid.innerHTML = `<div class="error-state">${msg || "Request gagal."}</div>`;
 }
 
-async function checkManualEmail() {
+/* ═══ Clear ═══ */
+
+function clearAll() {
+  stopPolling();
+  state.emails = [];
+  state.inbox = new Map();
+  clearStorage();
+  renderGrid();
+  updateStats();
+  els.pollInfo.textContent = "—";
+  setStatus("Idle", "");
+  showToast("Semua email dihapus", "success");
+}
+
+/* ═══ Copy All ═══ */
+
+function copyAllEmails() {
+  if (!state.emails.length) return;
+  copyToClipboard(state.emails.join("\n"), `${state.emails.length} email copied!`);
+}
+
+/* ═══ Manual Inbox Viewer ═══ */
+
+async function checkManualInbox() {
   const email = els.manualEmailInput.value.trim().toLowerCase();
   if (!email) {
-    renderManualEmpty("Masukkan alamat email dulu.");
+    showToast("Masukkan email dulu", "error");
     return;
   }
 
   els.manualCheckBtn.disabled = true;
-  setStatus("Manual check");
+  setStatus("Checking inbox...", "generating");
+  renderInboxLoading();
+
   try {
-    const data = await api("/api/inbox/detail", { email });
-    renderManualResult(data);
-    setStatus("Ready", "ok");
-  } catch (error) {
+    const data = await apiPost("/api/inbox/messages", { email });
+    state.manualMessages = data.messages || [];
+    state.activeMessageId = null;
+    renderInboxList();
+
+    if (state.manualMessages.length > 0) {
+      // Auto-select first message
+      selectMessage(state.manualMessages[0].id);
+      setStatus(`${state.manualMessages.length} pesan ditemukan`, "ok");
+    } else {
+      renderInboxBodyEmpty("Belum ada email masuk untuk alamat ini.");
+      setStatus("No messages", "");
+    }
+  } catch (err) {
+    showToast(err.message, "error");
     setStatus("Error", "error");
-    renderManualError(error.message);
+    renderInboxBodyEmpty("Gagal mengambil data inbox.");
   } finally {
     els.manualCheckBtn.disabled = false;
   }
 }
 
-function renderManualResult(data) {
-  const message = data.message;
-  if (!message) {
-    renderManualEmpty("Belum ada email masuk untuk alamat ini.");
+function renderInboxLoading() {
+  els.inboxList.innerHTML = `<div class="inbox-loading">
+    <span class="mail-waiting-dots"><span></span><span></span><span></span></span>
+    Memuat inbox...
+  </div>`;
+  els.inboxBody.innerHTML = `<div class="inbox-empty"><p>Memuat...</p></div>`;
+}
+
+function renderInboxList() {
+  if (!state.manualMessages.length) {
+    els.inboxList.innerHTML = `<div class="inbox-empty"><p>Tidak ada pesan ditemukan.</p></div>`;
     return;
   }
 
-  els.manualResult.innerHTML = "";
+  els.inboxList.innerHTML = "";
+  state.manualMessages.forEach((msg) => {
+    const item = document.createElement("div");
+    item.className = `inbox-item ${msg.id === state.activeMessageId ? "active" : ""}`;
+    item.dataset.id = msg.id;
 
-  const meta = document.createElement("div");
-  meta.className = "manual-meta";
-  meta.append(
-    createMetaRow("From", message.from || "-"),
-    createMetaRow("Subject", message.subject || "-"),
-    createMetaRow("Received", formatDate(message.received_at)),
-  );
-  els.manualResult.appendChild(meta);
+    const fromName = extractDisplayName(msg.from);
 
-  if (message.code) {
-    const codeRow = document.createElement("div");
-    codeRow.className = "manual-code";
-    const code = document.createElement("strong");
-    code.textContent = message.code;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "secondary";
-    button.textContent = "Copy Code";
-    button.addEventListener("click", () => copyText(message.code, "Copied"));
-    codeRow.append(code, button);
-    els.manualResult.appendChild(codeRow);
-  }
-
-  if (message.allowed_full_body) {
-    const body = document.createElement("pre");
-    body.className = "manual-body";
-    body.textContent = message.body || "Isi email kosong.";
-    els.manualResult.appendChild(body);
-    return;
-  }
-
-  const notice = document.createElement("p");
-  notice.className = "manual-notice";
-  notice.textContent = `Isi email disembunyikan. Sender terdeteksi: ${message.from_email || message.from || "-"}`;
-  els.manualResult.appendChild(notice);
-}
-
-function createMetaRow(label, value) {
-  const row = document.createElement("div");
-  const labelEl = document.createElement("span");
-  labelEl.textContent = label;
-  const valueEl = document.createElement("strong");
-  valueEl.textContent = value;
-  row.append(labelEl, valueEl);
-  return row;
-}
-
-function renderManualEmpty(text) {
-  els.manualResult.innerHTML = "";
-  const empty = document.createElement("p");
-  empty.className = "muted";
-  empty.textContent = text;
-  els.manualResult.appendChild(empty);
-}
-
-function renderManualError(text) {
-  els.manualResult.innerHTML = "";
-  const error = document.createElement("p");
-  error.className = "error-box";
-  error.textContent = text || "Gagal cek email.";
-  els.manualResult.appendChild(error);
-}
-
-async function copyText(text, statusText = "Copied") {
-  await navigator.clipboard.writeText(text);
-  setStatus(statusText, "ok");
-  window.setTimeout(() => {
-    if (!state.checking) {
-      setStatus("Ready", "ok");
+    let metaRight = "";
+    if (msg.code) {
+      metaRight = `<span class="inbox-item-code">${msg.code}</span>`;
     }
-  }, 1200);
+
+    item.innerHTML = `
+      <div class="inbox-item-from">${escapeHtml(fromName)}</div>
+      <div class="inbox-item-subject">${escapeHtml(msg.subject || "(No Subject)")}</div>
+      <div class="inbox-item-meta">
+        <span class="inbox-item-time">${formatTime(msg.received_at)}</span>
+        ${metaRight}
+      </div>`;
+
+    item.addEventListener("click", () => selectMessage(msg.id));
+    els.inboxList.appendChild(item);
+  });
 }
 
-function copyAllEmails() {
-  if (!state.emails.length) {
-    return;
-  }
-  copyText(state.emails.join("\n"), "Email copied");
+function selectMessage(id) {
+  state.activeMessageId = id;
+  const msg = state.manualMessages.find((m) => m.id === id);
+  if (!msg) return;
+
+  // Update active state in list
+  els.inboxList.querySelectorAll(".inbox-item").forEach((el) => {
+    el.classList.toggle("active", Number(el.dataset.id) === id);
+  });
+
+  renderInboxBody(msg);
 }
 
-function formatDate(value) {
-  if (!value) {
-    return "-";
+function renderInboxBody(msg) {
+  els.inboxBody.innerHTML = "";
+
+  // Header
+  const header = document.createElement("div");
+  header.className = "inbox-body-header";
+  header.innerHTML = `
+    <div class="inbox-body-subject">${escapeHtml(msg.subject || "(No Subject)")}</div>
+    <div class="inbox-body-meta">
+      <div class="inbox-body-meta-row">
+        <span class="inbox-body-meta-label">From</span>
+        <span class="inbox-body-meta-value">${escapeHtml(msg.from || "—")}</span>
+      </div>
+      <div class="inbox-body-meta-row">
+        <span class="inbox-body-meta-label">To</span>
+        <span class="inbox-body-meta-value">${escapeHtml(msg.to || "—")}</span>
+      </div>
+      <div class="inbox-body-meta-row">
+        <span class="inbox-body-meta-label">Date</span>
+        <span class="inbox-body-meta-value">${formatDate(msg.received_at)}</span>
+      </div>
+    </div>`;
+  els.inboxBody.appendChild(header);
+
+  // Code banner
+  if (msg.code) {
+    const banner = document.createElement("div");
+    banner.className = "inbox-body-code-banner";
+    banner.innerHTML = `
+      <div><span style="font-size:12px;color:var(--text-muted);font-weight:600;">VERIFICATION CODE</span><br>
+      <strong>${escapeHtml(msg.code)}</strong></div>
+      <button class="btn-copy-code">Copy Code</button>`;
+    banner.querySelector(".btn-copy-code").addEventListener("click", () => {
+      copyToClipboard(msg.code, "Code copied!");
+    });
+    els.inboxBody.appendChild(banner);
   }
-  return new Intl.DateTimeFormat("id-ID", {
-    dateStyle: "medium",
-    timeStyle: "medium",
-  }).format(new Date(value));
+
+  // Body content
+  const content = document.createElement("div");
+  content.className = "inbox-body-content";
+
+  const body = msg.body || "";
+
+  // Check if body looks like HTML
+  if (/<[a-z][\s\S]*>/i.test(body)) {
+    // Render HTML in sandboxed iframe
+    const iframe = document.createElement("iframe");
+    iframe.sandbox = "allow-same-origin";
+    iframe.title = "Email body";
+    content.appendChild(iframe);
+    els.inboxBody.appendChild(content);
+
+    // Write content after iframe is attached
+    requestAnimationFrame(() => {
+      const doc = iframe.contentDocument;
+      if (doc) {
+        doc.open();
+        doc.write(`<!doctype html><html><head><meta charset="utf-8">
+          <style>
+            body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1a1a1a; padding: 16px; margin: 0; background: #fff; }
+            img { max-width: 100%; height: auto; }
+            a { color: #2563eb; }
+            table { border-collapse: collapse; max-width: 100%; }
+          </style></head><body>${body}</body></html>`);
+        doc.close();
+
+        // Auto-resize iframe
+        const resizeObserver = new ResizeObserver(() => {
+          const h = doc.documentElement.scrollHeight;
+          iframe.style.height = `${Math.max(200, Math.min(600, h))}px`;
+        });
+        resizeObserver.observe(doc.documentElement);
+      }
+    });
+  } else {
+    // Plain text
+    const pre = document.createElement("pre");
+    pre.textContent = body || "(Email body kosong)";
+    content.appendChild(pre);
+    els.inboxBody.appendChild(content);
+  }
 }
+
+function renderInboxBodyEmpty(text) {
+  els.inboxBody.innerHTML = `<div class="inbox-empty"><p>${text}</p></div>`;
+}
+
+/* ═══ Helpers ═══ */
+
+function extractDisplayName(fromHeader) {
+  if (!fromHeader) return "Unknown";
+  // "Name <email>" → "Name"
+  const match = fromHeader.match(/^(.+?)\s*<[^>]+>$/);
+  if (match) return match[1].replace(/^["']|["']$/g, "").trim();
+  return fromHeader;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/* ═══ Event Bindings ═══ */
 
 function bindEvents() {
   els.generateBtn.addEventListener("click", generateEmails);
-  els.addDomainBtn.addEventListener("click", addCustomDomain);
-  els.customDomainInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      addCustomDomain();
-    }
-  });
-  els.checkBtn.addEventListener("click", startChecking);
-  els.stopBtn.addEventListener("click", () => stopChecking());
   els.copyAllBtn.addEventListener("click", copyAllEmails);
   els.clearBtn.addEventListener("click", clearAll);
-  els.manualCheckBtn.addEventListener("click", checkManualEmail);
-  els.manualEmailInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      checkManualEmail();
-    }
+  els.addDomainBtn.addEventListener("click", addDomain);
+  els.customDomainInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") addDomain();
+  });
+  els.manualCheckBtn.addEventListener("click", checkManualInbox);
+  els.manualEmailInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") checkManualInbox();
+  });
+
+  // Clamp count input
+  els.countInput.addEventListener("change", () => {
+    els.countInput.value = clamp(els.countInput.value, 1, MAX_EMAILS);
   });
 }
 
-bindEvents();
-loadDomains();
-render();
+/* ═══ Init ═══ */
+
+async function init() {
+  bindEvents();
+  await loadDomains();
+
+  // Restore from localStorage
+  const restored = loadFromStorage();
+  if (restored) {
+    renderGrid();
+    updateStats();
+
+    // Resume polling if there are waiting emails
+    const hasWaiting = state.emails.some((e) => !state.inbox.has(e));
+    if (hasWaiting) {
+      startPolling();
+    } else {
+      setStatus("Complete", "ok");
+    }
+  } else {
+    renderGrid();
+    updateStats();
+  }
+}
+
+init();
