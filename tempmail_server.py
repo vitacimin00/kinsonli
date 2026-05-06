@@ -627,11 +627,14 @@ class TempMailHandler(SimpleHTTPRequestHandler):
 
     def write_json(self, data: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         encoded = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(encoded)))
-        self.end_headers()
-        self.wfile.write(encoded)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass  # Client disconnected, ignore
 
 
 async def run_smtp(host: str, port: int) -> None:
