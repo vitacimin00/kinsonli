@@ -37,8 +37,9 @@ DB_PATH = APP_DIR / "tempmail.db"
 DOMAINS_PATH = APP_DIR / "tempmail_domains.json"
 DEFAULT_DOMAIN = ""
 MAX_BULK_EMAILS = 10
-MESSAGE_TTL_DAYS = 7
-FULL_BODY_ALLOWED_SENDER = "noreply@tm.openai.com"
+MESSAGE_TTL_HOURS = 24
+ALLOWED_STATIC_FILES = {"index.html", "styles.css", "app.js", "favicon.ico"}
+CLEANUP_INTERVAL_SECONDS = 3600
 API_NAME_MIN_LEN = 13
 API_NAME_MAX_LEN = 15
 ENGLISH_NAT_CODES = "us,gb,au,ca,ie,nz"
@@ -99,7 +100,7 @@ def sender_email(value: str) -> str:
 
 
 def cleanup_expired_messages() -> None:
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=MESSAGE_TTL_DAYS))
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=MESSAGE_TTL_HOURS))
     cutoff_text = cutoff.replace(microsecond=0).isoformat()
     with db_connect() as conn:
         conn.execute("DELETE FROM messages WHERE received_at < ?", (cutoff_text,))
@@ -313,7 +314,6 @@ def store_message(recipient: str, sender: str, subject: str, body: str, raw: str
 
 
 def latest_message_for(email: str) -> dict | None:
-    cleanup_expired_messages()
     with db_connect() as conn:
         row = conn.execute(
             """
@@ -341,38 +341,33 @@ def latest_message_for(email: str) -> dict | None:
     }
 
 
-def latest_message_detail_for(email: str) -> dict | None:
-    cleanup_expired_messages()
+def all_messages_for(email: str) -> list[dict]:
+    """Return all messages for an email address, newest first."""
     with db_connect() as conn:
-        row = conn.execute(
+        rows = conn.execute(
             """
             SELECT id, recipient, sender, subject, body, received_at
             FROM messages
             WHERE recipient = ?
             ORDER BY id DESC
-            LIMIT 1
             """,
             (clean_email(email),),
-        ).fetchone()
+        ).fetchall()
 
-    if row is None:
-        return None
-
-    from_email = sender_email(row["sender"])
-    allowed_full_body = from_email == FULL_BODY_ALLOWED_SENDER
-    code = extract_code(row["subject"], row["body"])
-    return {
-        "id": row["id"],
-        "to": row["recipient"],
-        "from": row["sender"],
-        "from_email": from_email,
-        "subject": row["subject"],
-        "received_at": row["received_at"],
-        "code": code,
-        "allowed_full_body": allowed_full_body,
-        "body": row["body"] if allowed_full_body else None,
-        "expires_days": MESSAGE_TTL_DAYS,
-    }
+    messages = []
+    for row in rows:
+        code = extract_code(row["subject"], row["body"])
+        messages.append({
+            "id": row["id"],
+            "to": row["recipient"],
+            "from": row["sender"],
+            "from_email": sender_email(row["sender"]),
+            "subject": row["subject"],
+            "body": row["body"],
+            "received_at": row["received_at"],
+            "code": code,
+        })
+    return messages
 
 
 def generate_local_part() -> str:
@@ -510,13 +505,18 @@ class TempMailHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/health":
-            self.write_json({"ok": True, "domain": DEFAULT_DOMAIN, "domains": load_domains()})
+            self.write_json({"ok": True, "domains": load_domains(), "ttl_hours": MESSAGE_TTL_HOURS})
             return
         if path == "/api/domains":
             self.write_json({"domains": load_domains()})
             return
         if path.startswith("/api/"):
             self.write_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+            return
+        # Static file whitelist — only serve allowed files
+        clean_path = path.lstrip("/") or "index.html"
+        if clean_path not in ALLOWED_STATIC_FILES:
+            self.send_error(HTTPStatus.FORBIDDEN, "Access denied")
             return
         super().do_GET()
 
@@ -528,8 +528,8 @@ class TempMailHandler(SimpleHTTPRequestHandler):
         if path == "/api/inbox/bulk":
             self.handle_bulk_inbox()
             return
-        if path == "/api/inbox/detail":
-            self.handle_inbox_detail()
+        if path == "/api/inbox/messages":
+            self.handle_inbox_messages()
             return
         if path == "/api/domains":
             self.handle_add_domain()
@@ -587,18 +587,19 @@ class TempMailHandler(SimpleHTTPRequestHandler):
             })
         self.write_json({"results": results})
 
-    def handle_inbox_detail(self) -> None:
+    def handle_inbox_messages(self) -> None:
+        """Return all messages for an email, with full body."""
         payload = self.read_json()
         email = clean_email(str(payload.get("email") or ""))
         if not is_valid_email(email):
             self.write_json({"error": "Email tidak valid."}, HTTPStatus.BAD_REQUEST)
             return
 
-        message = latest_message_detail_for(email)
+        messages = all_messages_for(email)
         self.write_json({
             "email": email,
-            "status": "found" if message else "waiting",
-            "message": message,
+            "count": len(messages),
+            "messages": messages,
         })
 
     def read_json(self) -> dict:
@@ -638,6 +639,22 @@ def start_smtp_thread(host: str, port: int) -> threading.Thread:
     return thread
 
 
+def start_cleanup_timer() -> None:
+    """Run cleanup every CLEANUP_INTERVAL_SECONDS in background."""
+    def _loop():
+        while True:
+            import time
+            time.sleep(CLEANUP_INTERVAL_SECONDS)
+            try:
+                cleanup_expired_messages()
+            except Exception:
+                pass
+
+    thread = threading.Thread(target=_loop, daemon=True, name="cleanup-timer")
+    thread.start()
+    return thread
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Self-hosted TempMail server")
     parser.add_argument("--http-host", default="127.0.0.1")
@@ -648,11 +665,14 @@ def main() -> None:
 
     init_db()
     start_smtp_thread(args.smtp_host, args.smtp_port)
+    start_cleanup_timer()
 
+    domains = load_domains()
     httpd = ThreadingHTTPServer((args.http_host, args.http_port), TempMailHandler)
     print(f"HTTP: http://{args.http_host}:{args.http_port}/")
     print(f"SMTP: {args.smtp_host}:{args.smtp_port}")
-    print(f"Domain: {DEFAULT_DOMAIN}")
+    print(f"Domains: {', '.join(domains) if domains else '(none)'}")
+    print(f"TTL: {MESSAGE_TTL_HOURS}h | Cleanup every {CLEANUP_INTERVAL_SECONDS}s")
     httpd.serve_forever()
 
 
