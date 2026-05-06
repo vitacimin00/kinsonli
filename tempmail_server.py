@@ -72,6 +72,7 @@ def db_connect() -> sqlite3.Connection:
 
 def init_db() -> None:
     with db_connect() as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
