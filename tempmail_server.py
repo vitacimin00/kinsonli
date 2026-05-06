@@ -388,6 +388,13 @@ def generate_emails(count: int, domain: str, source: str = "random") -> list[str
     raw_domain = normalize_domain(domain)
     use_random_domain = raw_domain in ("__random__", "") or not is_valid_domain(raw_domain)
 
+    # Shuffle domains so each request rotates through different domains
+    if use_random_domain:
+        shuffled = list(domains)
+        secrets.SystemRandom().shuffle(shuffled)
+    else:
+        shuffled = domains
+
     try:
         local_parts = [with_random_digits(name) for name in generate_api_base_names(count, source)]
     except Exception:
@@ -395,11 +402,11 @@ def generate_emails(count: int, domain: str, source: str = "random") -> list[str
 
     emails = set()
     for i, local_part in enumerate(local_parts):
-        d = domains[i % len(domains)] if use_random_domain else raw_domain
+        d = shuffled[i % len(shuffled)] if use_random_domain else raw_domain
         emails.add(f"{local_part}@{d}")
     idx = len(local_parts)
     while len(emails) < count:
-        d = domains[idx % len(domains)] if use_random_domain else raw_domain
+        d = shuffled[idx % len(shuffled)] if use_random_domain else raw_domain
         emails.add(f"{generate_local_part()}@{d}")
         idx += 1
     return sorted(emails)
