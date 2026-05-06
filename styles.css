@@ -791,6 +791,33 @@ footer {
   font-size: 12px;
 }
 
+/* ═══ LIVE Indicator ═══ */
+.live-indicator {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  background: var(--bg-surface-2);
+  transition: all var(--transition);
+}
+
+.live-indicator.active {
+  color: var(--green);
+  border-color: rgba(52, 211, 153, 0.4);
+  background: var(--green-glow);
+  animation: pulse-live 2s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 /* ═══ Toast ═══ */
 .toast {
   position: fixed;
