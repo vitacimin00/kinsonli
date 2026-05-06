@@ -5,6 +5,7 @@
 const API = "";
 const MAX_EMAILS = 10;
 const POLL_INTERVAL_MS = 5000;
+const MANUAL_POLL_MS = 5000;
 const STORAGE_KEY = "shadowmail_emails";
 
 /* ─── State ─── */
@@ -17,6 +18,10 @@ const state = {
   domains: [],
   manualMessages: [],   // all messages for manual viewer
   activeMessageId: null,
+  manualEmail: "",       // current email in manual viewer
+  manualPollTimer: null, // auto-refresh timer for manual inbox
+  manualPolling: false,
+  notificationsEnabled: false,
 };
 
 /* ─── DOM ─── */
@@ -102,6 +107,73 @@ async function copyToClipboard(text, label = "Copied!") {
   } catch {
     showToast("Gagal copy", "error");
   }
+}
+
+/* ═══ Notification System ═══ */
+
+let audioCtx = null;
+
+function playNotificationSound() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    // Pleasant two-tone chime
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+    osc.frequency.setValueAtTime(1108, audioCtx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + 0.5);
+  } catch {
+    // Audio not supported, silently ignore
+  }
+}
+
+function sendBrowserNotification(title, body) {
+  if (!state.notificationsEnabled) return;
+  try {
+    if (Notification.permission === "granted") {
+      const n = new Notification(title, {
+        body,
+        icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📬</text></svg>",
+        silent: true, // we play our own sound
+      });
+      setTimeout(() => n.close(), 5000);
+    }
+  } catch {
+    // Notifications not supported
+  }
+}
+
+async function requestNotificationPermission() {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    await Notification.requestPermission();
+  }
+  state.notificationsEnabled = Notification.permission === "granted";
+}
+
+function notifyNewCodes(newEmails) {
+  if (!newEmails.length) return;
+  playNotificationSound();
+
+  const summary = newEmails
+    .map((e) => {
+      const msg = state.inbox.get(e);
+      return msg?.code ? `${e.split("@")[0]}: ${msg.code}` : e.split("@")[0];
+    })
+    .join(", ");
+
+  sendBrowserNotification(
+    `🔔 ${newEmails.length} code baru ditemukan!`,
+    summary
+  );
 }
 
 /* ═══ API Helpers ═══ */
@@ -285,17 +357,18 @@ async function pollOnce() {
 
   try {
     const data = await apiPost("/api/inbox/bulk", { emails: state.emails });
-    let newFound = false;
+    const newlyFound = [];
 
     for (const result of data.results || []) {
       if (result.message && !state.inbox.has(result.email)) {
         state.inbox.set(result.email, result.message);
-        newFound = true;
+        newlyFound.push(result.email);
       }
     }
 
-    if (newFound) {
+    if (newlyFound.length) {
       saveToStorage();
+      notifyNewCodes(newlyFound);
     }
 
     renderGrid();
@@ -439,37 +512,95 @@ function copyAllEmails() {
 
 /* ═══ Manual Inbox Viewer ═══ */
 
-async function checkManualInbox() {
+async function checkManualInbox(isAutoRefresh = false) {
   const email = els.manualEmailInput.value.trim().toLowerCase();
   if (!email) {
-    showToast("Masukkan email dulu", "error");
+    if (!isAutoRefresh) showToast("Masukkan email dulu", "error");
     return;
   }
 
-  els.manualCheckBtn.disabled = true;
-  setStatus("Checking inbox...", "generating");
-  renderInboxLoading();
+  state.manualEmail = email;
+
+  if (!isAutoRefresh) {
+    els.manualCheckBtn.disabled = true;
+    setStatus("Checking inbox...", "generating");
+    renderInboxLoading();
+  }
 
   try {
     const data = await apiPost("/api/inbox/messages", { email });
+    const oldCount = state.manualMessages.length;
     state.manualMessages = data.messages || [];
-    state.activeMessageId = null;
+
+    // Notify if new messages arrived during auto-refresh
+    if (isAutoRefresh && state.manualMessages.length > oldCount) {
+      const diff = state.manualMessages.length - oldCount;
+      playNotificationSound();
+      sendBrowserNotification(
+        `📨 ${diff} pesan baru!`,
+        `Email: ${email}`
+      );
+    }
+
+    // Preserve selected message if still exists, otherwise select first
+    if (!isAutoRefresh) {
+      state.activeMessageId = null;
+    }
     renderInboxList();
 
     if (state.manualMessages.length > 0) {
-      // Auto-select first message
-      selectMessage(state.manualMessages[0].id);
-      setStatus(`${state.manualMessages.length} pesan ditemukan`, "ok");
+      if (!state.activeMessageId) {
+        selectMessage(state.manualMessages[0].id);
+      } else {
+        // Re-render active message body (might have updated)
+        const activeMsg = state.manualMessages.find((m) => m.id === state.activeMessageId);
+        if (activeMsg) renderInboxBody(activeMsg);
+      }
+      if (!isAutoRefresh) setStatus(`${state.manualMessages.length} pesan ditemukan`, "ok");
     } else {
       renderInboxBodyEmpty("Belum ada email masuk untuk alamat ini.");
-      setStatus("No messages", "");
+      if (!isAutoRefresh) setStatus("No messages", "");
     }
+
+    // Start auto-refresh if not already running
+    if (!state.manualPolling) startManualPolling();
+
   } catch (err) {
-    showToast(err.message, "error");
-    setStatus("Error", "error");
+    if (!isAutoRefresh) {
+      showToast(err.message, "error");
+      setStatus("Error", "error");
+    }
     renderInboxBodyEmpty("Gagal mengambil data inbox.");
   } finally {
-    els.manualCheckBtn.disabled = false;
+    if (!isAutoRefresh) els.manualCheckBtn.disabled = false;
+  }
+}
+
+function startManualPolling() {
+  stopManualPolling();
+  state.manualPolling = true;
+  updateManualPollIndicator();
+  state.manualPollTimer = setInterval(() => {
+    if (state.manualEmail) {
+      checkManualInbox(true);
+    }
+  }, MANUAL_POLL_MS);
+}
+
+function stopManualPolling() {
+  if (state.manualPollTimer) {
+    clearInterval(state.manualPollTimer);
+    state.manualPollTimer = null;
+  }
+  state.manualPolling = false;
+  updateManualPollIndicator();
+}
+
+function updateManualPollIndicator() {
+  const el = document.getElementById("manualLiveIndicator");
+  if (el) {
+    el.classList.toggle("active", state.manualPolling);
+    el.textContent = state.manualPolling ? "● LIVE" : "○ PAUSED";
   }
 }
 
@@ -656,6 +787,7 @@ function bindEvents() {
 async function init() {
   bindEvents();
   await loadDomains();
+  await requestNotificationPermission();
 
   // Restore from localStorage
   const restored = loadFromStorage();
