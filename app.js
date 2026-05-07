@@ -136,27 +136,11 @@ function playNotificationSound() {
 }
 
 function sendBrowserNotification(title, body) {
-  if (!state.notificationsEnabled) return;
-  try {
-    if (Notification.permission === "granted") {
-      const n = new Notification(title, {
-        body,
-        icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📬</text></svg>",
-        silent: true, // we play our own sound
-      });
-      setTimeout(() => n.close(), 5000);
-    }
-  } catch {
-    // Notifications not supported
-  }
+  // Disabled — sound only
 }
 
 async function requestNotificationPermission() {
-  if (!("Notification" in window)) return;
-  if (Notification.permission === "default") {
-    await Notification.requestPermission();
-  }
-  state.notificationsEnabled = Notification.permission === "granted";
+  // Disabled — no browser notification needed
 }
 
 function notifyNewCodes(newEmails) {
