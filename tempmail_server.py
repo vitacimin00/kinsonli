@@ -51,13 +51,50 @@ FAKER_INDONESIA_LOCALE = "id_ID"
 API_TIMEOUT = 7
 
 CODE_PATTERNS = [
-    re.compile(r"\b([A-Z0-9]{2,5}-[A-Z0-9]{2,5})\b", re.IGNORECASE),
+    # Specific: "verification code: 123456" or similar context
+    re.compile(
+        r"(?:code|kode|otp|pin|verify|verifikasi|sandi|password)\s*(?:[:=\-–—]|is|nya|anda)\s*[:\s]*([A-Z0-9]{4,8})",
+        re.IGNORECASE,
+    ),
+    # XXX-XXX format (must contain at least 1 digit to avoid "font-face" etc.)
+    re.compile(r"\b((?=[A-Z0-9]*\d)[A-Z0-9]{2,5}-[A-Z0-9]{2,5})\b", re.IGNORECASE),
+    # Specific: "enter this temporary verification code to continue: 123456"
     re.compile(
         r"enter\s+this\s+temporary\s+verification\s+code\s+to\s+continue:\s*(\d{6})",
         re.IGNORECASE,
     ),
+    # Standalone 4-8 digits near a keyword
+    re.compile(
+        r"(?:code|kode|otp|pin|verify|verifikasi|confirmation)\s*(?:[:=\-–—\s]){0,5}(\d{4,8})\b",
+        re.IGNORECASE,
+    ),
+    # 6-digit standalone (common OTP)
     re.compile(r"\b(\d{6})\b"),
 ]
+
+# Tags to strip before code extraction
+_STRIP_TAGS_RE = re.compile(r"<(style|script|head)[^>]*>[\s\S]*?</\1>", re.IGNORECASE)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_html_for_code(text: str) -> str:
+    """Remove HTML markup, CSS, script — leave only visible text."""
+    text = _STRIP_TAGS_RE.sub("", text)
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = re.sub(r"&[a-zA-Z]+;|&#\d+;", " ", text)  # &nbsp; etc
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def extract_code(*texts: str) -> str:
+    combined = "\n".join(text for text in texts if text)
+    # Strip HTML before searching for codes
+    clean = _strip_html_for_code(combined)
+    for pattern in CODE_PATTERNS:
+        match = pattern.search(clean)
+        if match:
+            return re.sub(r"[^A-Za-z0-9]", "", match.group(1)).upper()
+    return ""
 
 
 def utc_now() -> str:
@@ -161,31 +198,34 @@ def add_domain(domain: str) -> tuple[list[str], str]:
         save_domains(domains)
     return domains, normalized
 
-
-def extract_code(*texts: str) -> str:
-    combined = "\n".join(text for text in texts if text)
-    for pattern in CODE_PATTERNS:
-        match = pattern.search(combined)
-        if match:
-            return re.sub(r"[^A-Za-z0-9]", "", match.group(1)).upper()
-    return ""
-
-
 def message_to_text(message) -> str:
+    """Extract email body, prioritizing HTML for rich rendering."""
     if message.is_multipart():
-        chunks = []
+        html_parts = []
+        text_parts = []
         for part in message.walk():
-            if part.get_content_maintype() == "multipart":
-                continue
-            if part.get_content_type() not in {"text/plain", "text/html"}:
+            ctype = part.get_content_type()
+            if ctype == "multipart":
                 continue
             try:
-                chunks.append(part.get_content())
+                content = part.get_content()
             except Exception:
                 payload = part.get_payload(decode=True) or b""
-                chunks.append(payload.decode(errors="replace"))
-        return "\n\n".join(chunks)
+                content = payload.decode(errors="replace")
 
+            if ctype == "text/html":
+                html_parts.append(content)
+            elif ctype == "text/plain":
+                text_parts.append(content)
+
+        # Prefer HTML for rich formatting (buttons, links, layout)
+        if html_parts:
+            return "\n".join(html_parts)
+        if text_parts:
+            return "\n\n".join(text_parts)
+        return ""
+
+    # Single part message
     try:
         return message.get_content()
     except Exception:
