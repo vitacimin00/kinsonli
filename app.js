@@ -503,9 +503,16 @@ async function checkManualInbox(isAutoRefresh = false) {
     return;
   }
 
-  state.manualEmail = email;
+  // If email changed, reset everything
+  const emailChanged = email !== state.manualEmail;
+  if (emailChanged) {
+    stopManualPolling();
+    state.manualMessages = [];
+    state.activeMessageId = null;
+    state.manualEmail = email;
+  }
 
-  if (!isAutoRefresh) {
+  if (!isAutoRefresh || emailChanged) {
     els.manualCheckBtn.disabled = true;
     setStatus("Checking inbox...", "generating");
     renderInboxLoading();
@@ -517,17 +524,13 @@ async function checkManualInbox(isAutoRefresh = false) {
     state.manualMessages = data.messages || [];
 
     // Notify if new messages arrived during auto-refresh
-    if (isAutoRefresh && state.manualMessages.length > oldCount) {
+    if (isAutoRefresh && !emailChanged && state.manualMessages.length > oldCount) {
       const diff = state.manualMessages.length - oldCount;
       playNotificationSound();
-      sendBrowserNotification(
-        `📨 ${diff} pesan baru!`,
-        `Email: ${email}`
-      );
     }
 
-    // Preserve selected message if still exists, otherwise select first
-    if (!isAutoRefresh) {
+    // Reset selection when email changed or first check
+    if (emailChanged || !isAutoRefresh) {
       state.activeMessageId = null;
     }
     renderInboxList();
@@ -536,27 +539,26 @@ async function checkManualInbox(isAutoRefresh = false) {
       if (!state.activeMessageId) {
         selectMessage(state.manualMessages[0].id);
       } else {
-        // Re-render active message body (might have updated)
         const activeMsg = state.manualMessages.find((m) => m.id === state.activeMessageId);
         if (activeMsg) renderInboxBody(activeMsg);
       }
-      if (!isAutoRefresh) setStatus(`${state.manualMessages.length} pesan ditemukan`, "ok");
+      if (!isAutoRefresh || emailChanged) setStatus(`${state.manualMessages.length} pesan ditemukan`, "ok");
     } else {
       renderInboxBodyEmpty("Belum ada email masuk untuk alamat ini.");
-      if (!isAutoRefresh) setStatus("No messages", "");
+      if (!isAutoRefresh || emailChanged) setStatus("No messages", "");
     }
 
     // Start auto-refresh if not already running
     if (!state.manualPolling) startManualPolling();
 
   } catch (err) {
-    if (!isAutoRefresh) {
+    if (!isAutoRefresh || emailChanged) {
       showToast(err.message, "error");
       setStatus("Error", "error");
     }
     renderInboxBodyEmpty("Gagal mengambil data inbox.");
   } finally {
-    if (!isAutoRefresh) els.manualCheckBtn.disabled = false;
+    els.manualCheckBtn.disabled = false;
   }
 }
 
@@ -687,10 +689,11 @@ function renderInboxBody(msg) {
 
   // Check if body looks like HTML
   if (/<[a-z][\s\S]*>/i.test(body)) {
-    // Render HTML in sandboxed iframe
+    // Render HTML in iframe with external resource support
     const iframe = document.createElement("iframe");
-    iframe.sandbox = "allow-same-origin";
+    iframe.sandbox = "allow-same-origin allow-popups";
     iframe.title = "Email body";
+    iframe.style.background = "#fff";
     content.appendChild(iframe);
     els.inboxBody.appendChild(content);
 
@@ -700,20 +703,30 @@ function renderInboxBody(msg) {
       if (doc) {
         doc.open();
         doc.write(`<!doctype html><html><head><meta charset="utf-8">
+          <base target="_blank">
           <style>
-            body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1a1a1a; padding: 16px; margin: 0; background: #fff; }
-            img { max-width: 100%; height: auto; }
+            body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1a1a1a; padding: 16px; margin: 0; background: #fff; word-wrap: break-word; overflow-wrap: break-word; }
+            img { max-width: 100%; height: auto; display: block; }
             a { color: #2563eb; }
             table { border-collapse: collapse; max-width: 100%; }
+            td, th { word-break: break-word; }
+            * { max-width: 100%; box-sizing: border-box; }
           </style></head><body>${body}</body></html>`);
         doc.close();
 
-        // Auto-resize iframe
-        const resizeObserver = new ResizeObserver(() => {
+        // Auto-resize iframe — no max height cap
+        const resize = () => {
           const h = doc.documentElement.scrollHeight;
-          iframe.style.height = `${Math.max(200, Math.min(600, h))}px`;
+          iframe.style.height = `${Math.max(200, h + 20)}px`;
+        };
+        // Resize on load and on image load
+        resize();
+        setTimeout(resize, 500);
+        setTimeout(resize, 2000);
+        doc.querySelectorAll("img").forEach((img) => {
+          img.addEventListener("load", resize);
+          img.addEventListener("error", resize);
         });
-        resizeObserver.observe(doc.documentElement);
       }
     });
   } else {
