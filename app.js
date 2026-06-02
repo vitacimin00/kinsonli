@@ -344,7 +344,14 @@ async function pollOnce() {
     const newlyFound = [];
 
     for (const result of data.results || []) {
-      if (result.message && !state.inbox.has(result.email)) {
+      if (!result.message) continue;
+      const existing = state.inbox.get(result.email);
+      if (!existing) {
+        // New message found
+        state.inbox.set(result.email, result.message);
+        newlyFound.push(result.email);
+      } else if (!existing.code && result.message.code) {
+        // Previously had no code, now server detected one — update
         state.inbox.set(result.email, result.message);
         newlyFound.push(result.email);
       }
