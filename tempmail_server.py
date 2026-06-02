@@ -51,9 +51,31 @@ FAKER_INDONESIA_LOCALE = "id_ID"
 API_TIMEOUT = 7
 
 CODE_PATTERNS = [
+    # Dash-format code (uppercase) BEFORE "confirmation/verification code" phrase
+    # e.g. "PIX-TIK xAI confirmation code"
+    re.compile(
+        r"\b([A-Z][A-Z0-9]{1,4}-[A-Z][A-Z0-9]{1,4})\b"
+        r"(?:\s+\S+){0,5}?\s+"
+        r"(?i:(?:confirmation|verification|verifikasi)\s+(?:code|kode))"
+    ),
+    # Mixed alphanumeric code (letter+digit required) BEFORE "confirmation/verification code"
+    # e.g. "AB3C45 verification code"
+    re.compile(
+        r"\b((?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{4,8})\b"
+        r"(?:\s+\S+){0,5}?\s+"
+        r"(?i:(?:confirmation|verification|verifikasi)\s+(?:code|kode))"
+    ),
+    # "confirmation/verification code" phrase followed by dash-format code
+    # e.g. "confirmation code: PIX-TIK", "verification code ABC-123"
+    re.compile(
+        r"(?:confirmation|verification|verifikasi)\s+(?:code|kode)"
+        r"\s*[:=\-\u2013\u2014]?\s*"
+        r"([A-Z0-9]{2,8}-[A-Z0-9]{2,8})\b",
+        re.IGNORECASE,
+    ),
     # Specific: "verification code: 123456" or similar context
     re.compile(
-        r"(?:code|kode|otp|pin|verify|verifikasi|sandi|password)\s*(?:[:=\-–—]|is|nya|anda)\s*[:\s]*([A-Z0-9]{4,8})",
+        r"(?:code|kode|otp|pin|verify|verifikasi|sandi|password)\s*(?:[:=\-\u2013\u2014]|is|nya|anda)\s*[:\s]*([A-Z0-9]{4,8})",
         re.IGNORECASE,
     ),
     # XXX-XXX format (must contain at least 1 digit to avoid "font-face" etc.)
@@ -65,7 +87,22 @@ CODE_PATTERNS = [
     ),
     # Standalone 4-8 digits near a keyword
     re.compile(
-        r"(?:code|kode|otp|pin|verify|verifikasi|confirmation)\s*(?:[:=\-–—\s]){0,5}(\d{4,8})\b",
+        r"(?:code|kode|otp|pin|verify|verifikasi|confirmation)\s*(?:[:=\-\u2013\u2014\s]){0,5}(\d{4,8})\b",
+        re.IGNORECASE,
+    ),
+    # XXX-XXX (all letters, no digits) near code-related keyword
+    re.compile(
+        r"(?:code|kode|confirmation|verification|verifikasi|otp)"
+        r"[\s:=\-\u2013\u2014]{0,10}"
+        r"\b([A-Z]{2,5}-[A-Z]{2,5})\b",
+        re.IGNORECASE,
+    ),
+    # Spaced-out digits near a keyword (from HTML span elements)
+    # e.g. "code: 1 2 3 4 5 6"
+    re.compile(
+        r"(?:code|kode|otp|pin|confirmation|verification|verifikasi)"
+        r"[\s:=\-\u2013\u2014]{0,15}"
+        r"(\d(?:\s\d){3,7})",
         re.IGNORECASE,
     ),
     # 6-digit standalone (common OTP)
