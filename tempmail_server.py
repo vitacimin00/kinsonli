@@ -73,9 +73,36 @@ CODE_PATTERNS = [
         r"([A-Z0-9]{2,8}-[A-Z0-9]{2,8})\b",
         re.IGNORECASE,
     ),
-    # Specific: "verification code: 123456" or similar context
+    # "confirmation/verification code" followed by code with separator
+    # e.g. "confirmation code: PPCC02", "verification code = ABCDEF"
     re.compile(
-        r"(?:code|kode|otp|pin|verify|verifikasi|sandi|password)\s*(?:[:=\-\u2013\u2014]|is|nya|anda)\s*[:\s]*([A-Z0-9]{4,8})",
+        r"(?:confirmation|verification|verifikasi)\s+(?:code|kode)"
+        r"\s*[:=\-\u2013\u2014]\s*"
+        r"([A-Z0-9]{4,8})\b",
+        re.IGNORECASE,
+    ),
+    # "confirmation/verification code" followed by code (space only, must have digit)
+    # e.g. "confirmation code 0SFGGZ", "verification code AFTY74"
+    re.compile(
+        r"(?:confirmation|verification|verifikasi)\s+(?:code|kode)"
+        r"\s+"
+        r"((?=[A-Z0-9]*\d)[A-Z0-9]{4,8})\b",
+        re.IGNORECASE,
+    ),
+    # Keyword followed by code with required separator (colon, "is", etc.)
+    # e.g. "code is ABCDEF", "code: 0SFGGZ", "password: MYCODE1"
+    re.compile(
+        r"(?:code|kode|otp|pin|verify|verifikasi|sandi|password)"
+        r"\s*(?:[:=\-\u2013\u2014]|is|nya|anda)\s*[:\s]*"
+        r"([A-Z0-9]{4,8})\b",
+        re.IGNORECASE,
+    ),
+    # Keyword followed by dash-format code with separator (all letters OK)
+    # e.g. "code is PIX-TIK", "code: ABC-DEF", "verification code is MAG-RUN"
+    re.compile(
+        r"(?:code|kode|otp|pin|verify|verifikasi|sandi|password|confirmation|verification)"
+        r"\s*(?:[:=\-\u2013\u2014]|is|nya|anda)\s*[:\s]*"
+        r"([A-Z0-9]{2,5}-[A-Z0-9]{2,5})\b",
         re.IGNORECASE,
     ),
     # XXX-XXX format (must contain at least 1 digit to avoid "font-face" etc.)
@@ -87,7 +114,8 @@ CODE_PATTERNS = [
     ),
     # Standalone 4-8 digits near a keyword
     re.compile(
-        r"(?:code|kode|otp|pin|verify|verifikasi|confirmation)\s*(?:[:=\-\u2013\u2014\s]){0,5}(\d{4,8})\b",
+        r"(?:code|kode|otp|pin|verify|verifikasi|confirmation)"
+        r"\s*(?:[:=\-\u2013\u2014\s]){0,5}(\d{4,8})\b",
         re.IGNORECASE,
     ),
     # XXX-XXX (all letters, no digits) near code-related keyword
@@ -97,17 +125,29 @@ CODE_PATTERNS = [
         r"\b([A-Z]{2,5}-[A-Z]{2,5})\b",
         re.IGNORECASE,
     ),
-    # Spaced-out digits near a keyword (from HTML span elements)
-    # e.g. "code: 1 2 3 4 5 6"
+    # Spaced-out alphanumeric near a keyword (from HTML span elements)
+    # e.g. "code: 1 2 3 4 5 6" or "code A F T Y 7 4"
     re.compile(
         r"(?:code|kode|otp|pin|confirmation|verification|verifikasi)"
         r"[\s:=\-\u2013\u2014]{0,15}"
-        r"(\d(?:\s\d){3,7})",
+        r"([A-Z0-9](?:\s[A-Z0-9]){3,7})",
         re.IGNORECASE,
     ),
     # 6-digit standalone (common OTP)
     re.compile(r"\b(\d{6})\b"),
+    # Standalone 4-8 char uppercase alphanumeric (last resort fallback)
+    # Only matches if it has both letters and digits, to avoid matching normal words
+    re.compile(r"\b((?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{4,8})\b"),
 ]
+
+
+# Commonly found non-code words that match alphanumeric patterns
+_FALSE_POSITIVES = frozenset({
+    "FROM", "DATE", "SEND", "SENT", "MAIL", "THIS", "THAT", "THAN",
+    "HAVE", "WITH", "WILL", "YOUR", "JUST", "LIKE", "BEEN", "SOME",
+    "THEM", "THEN", "WHEN", "WHAT", "HERE", "BODY", "HTML", "HTTP",
+    "HTTPS", "SMTP", "IMAP", "UTF8", "BASE64",
+})
 
 # Tags to strip before code extraction
 _STRIP_TAGS_RE = re.compile(r"<(style|script|head)[^>]*>[\s\S]*?</\1>", re.IGNORECASE)
@@ -130,7 +170,9 @@ def extract_code(*texts: str) -> str:
     for pattern in CODE_PATTERNS:
         match = pattern.search(clean)
         if match:
-            return re.sub(r"[^A-Za-z0-9]", "", match.group(1)).upper()
+            code = re.sub(r"[^A-Za-z0-9]", "", match.group(1)).upper()
+            if code and code not in _FALSE_POSITIVES:
+                return code
     return ""
 
 
