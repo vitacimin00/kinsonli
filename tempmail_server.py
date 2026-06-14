@@ -40,6 +40,7 @@ MAX_BULK_EMAILS = 10
 MESSAGE_TTL_HOURS = 24
 ALLOWED_STATIC_FILES = {"index.html", "styles.css", "app.js", "favicon.ico"}
 CLEANUP_INTERVAL_SECONDS = 3600
+ADMIN_PASSWORD = "Masukaja123!"
 API_NAME_MIN_LEN = 13
 API_NAME_MAX_LEN = 15
 ENGLISH_NAT_CODES = "us,gb,au,ca,ie,nz"
@@ -781,6 +782,10 @@ class TempMailHandler(SimpleHTTPRequestHandler):
 
     def handle_add_domain(self) -> None:
         payload = self.read_json()
+        password = str(payload.get("password") or "")
+        if password != ADMIN_PASSWORD:
+            self.write_json({"error": "Password salah."}, HTTPStatus.FORBIDDEN)
+            return
         domain = str(payload.get("domain") or "")
         try:
             domains, added = add_domain(domain)
