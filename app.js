@@ -249,16 +249,113 @@ async function addDomain() {
   const domain = normalizeDomain(els.customDomainInput.value);
   if (!domain) return;
 
+  // Show password modal
+  showPasswordModal(domain);
+}
+
+function showPasswordModal(domain) {
+  // Remove existing modal if any
+  const existing = document.getElementById("domainPasswordModal");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "domainPasswordModal";
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-icon">🔐</div>
+        <h3>Admin Authentication</h3>
+        <p class="modal-desc">Masukkan password admin untuk menambahkan domain <strong>${escapeHtml(domain)}</strong></p>
+      </div>
+      <div class="modal-body">
+        <div class="modal-field">
+          <label for="domainPasswordInput">Password</label>
+          <input type="password" id="domainPasswordInput" placeholder="Masukkan password admin" autocomplete="off">
+        </div>
+        <div class="modal-error" id="modalError" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="modalCancelBtn">Batal</button>
+        <button class="btn btn-primary" id="modalConfirmBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Tambah Domain
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  const passwordInput = document.getElementById("domainPasswordInput");
+  const confirmBtn = document.getElementById("modalConfirmBtn");
+  const cancelBtn = document.getElementById("modalCancelBtn");
+  const modalError = document.getElementById("modalError");
+
+  // Focus password input
+  setTimeout(() => passwordInput.focus(), 100);
+
+  // Close on overlay click
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closePasswordModal();
+  });
+
+  // Close on Escape
+  const escHandler = (e) => {
+    if (e.key === "Escape") {
+      closePasswordModal();
+      document.removeEventListener("keydown", escHandler);
+    }
+  };
+  document.addEventListener("keydown", escHandler);
+
+  // Cancel button
+  cancelBtn.addEventListener("click", closePasswordModal);
+
+  // Confirm button
+  confirmBtn.addEventListener("click", () => submitDomain(domain, passwordInput, confirmBtn, modalError));
+
+  // Enter key on password input
+  passwordInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submitDomain(domain, passwordInput, confirmBtn, modalError);
+  });
+}
+
+function closePasswordModal() {
+  const modal = document.getElementById("domainPasswordModal");
+  if (modal) {
+    modal.classList.add("modal-closing");
+    setTimeout(() => modal.remove(), 200);
+  }
+}
+
+async function submitDomain(domain, passwordInput, confirmBtn, modalError) {
+  const password = passwordInput.value.trim();
+  if (!password) {
+    modalError.textContent = "Password tidak boleh kosong.";
+    modalError.style.display = "block";
+    passwordInput.focus();
+    return;
+  }
+
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = "Memproses...";
+  modalError.style.display = "none";
+
   try {
-    const data = await apiPost("/api/domains", { domain });
+    const data = await apiPost("/api/domains", { domain, password });
     state.domains = (data.domains || []).map(normalizeDomain).filter(Boolean);
     renderDomains();
-    // Select the new domain
     els.domainSelect.value = data.domain || domain;
     els.customDomainInput.value = "";
+    closePasswordModal();
     showToast(`Domain ${domain} ditambahkan!`, "success");
   } catch (err) {
-    showToast(err.message, "error");
+    modalError.textContent = err.message || "Gagal menambahkan domain.";
+    modalError.style.display = "block";
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = "Tambah Domain";
+    passwordInput.value = "";
+    passwordInput.focus();
   }
 }
 
