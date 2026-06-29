@@ -308,25 +308,35 @@ function updateZoneDropdown() {
   });
 }
 
-/* ═══════════════════════════════════════════════════
-   Order Email (single + bulk)
-   ═══════════════════════════════════════════════════ */
+/* Errors that are retryable */
+const RETRYABLE_ERRORS = ["ERORR OCCURS", "TIME LIMIT EXCEED"];
 
 async function orderEmail(zone, site) {
-  try {
-    const result = await proxyCall("mail/order", { zone, site });
-    const order = result.data;
-    order.message = order.message || "";
-    order.full_message = order.full_message || "";
-    state.orders.unshift(order);
-    saveOrders();
-    renderOrders();
-    startPolling(order.order_id);
-    return order;
-  } catch (err) {
-    showToast(err.message || "Order gagal", "error");
-    return null;
+  const maxRetries = 3;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await proxyCall("mail/order", { zone, site });
+      const order = result.data;
+      order.message = order.message || "";
+      order.full_message = order.full_message || "";
+      state.orders.unshift(order);
+      saveOrders();
+      renderOrders();
+      startPolling(order.order_id);
+      return order;
+    } catch (err) {
+      const msg = err.message || "";
+      if (RETRYABLE_ERRORS.some(e => msg.includes(e)) && attempt < maxRetries - 1) {
+        // Retryable error — wait 5 seconds then retry
+        setStatus(`Retry in 5s... (${msg})`, "loading");
+        await new Promise(r => setTimeout(r, 5000));
+        continue;
+      }
+      showToast(msg || "Order gagal", "error");
+      return null;
+    }
   }
+  return null;
 }
 
 async function doBulkOrder() {
@@ -519,8 +529,8 @@ async function pollOrderStatus(orderId) {
       showToast(`OTP diterima untuk ${order.email}`, "success");
     }
 
-    // Stop polling if terminal status
-    if (order.status === "SUCCESS" || order.status === "CANCELED") {
+    // Stop polling if terminal status (RECEIVED = message arrived, SUCCESS = done, CANCELED = cancelled)
+    if (order.status === "SUCCESS" || order.status === "CANCELED" || order.status === "RECEIVED") {
       stopPolling(orderId);
     }
 
