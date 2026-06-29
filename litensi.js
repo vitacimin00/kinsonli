@@ -352,7 +352,7 @@ async function doBulkOrder() {
     const order = await orderEmail(zone, site);
     if (order) successCount++;
     // Small delay between orders to avoid rate limits
-    if (i < count - 1) await new Promise(r => setTimeout(r, 300));
+    if (i < count - 1) await new Promise(r => setTimeout(r, 1500));
   }
 
   await refreshBalance();
