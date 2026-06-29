@@ -361,8 +361,9 @@ async function doBulkOrder() {
       renderOrders();
       startPolling(order.order_id);
       successCount++;
-    } catch {
+    } catch (err) {
       failCount++;
+      showToast(`Order ${i + 1} gagal: ${err.message}`, "error");
     }
 
     // Delay 2 detik antar order (kecuali yang terakhir)
