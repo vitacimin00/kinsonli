@@ -38,9 +38,14 @@ DOMAINS_PATH = APP_DIR / "tempmail_domains.json"
 DEFAULT_DOMAIN = ""
 MAX_BULK_EMAILS = 10
 MESSAGE_TTL_HOURS = 24
-ALLOWED_STATIC_FILES = {"index.html", "styles.css", "app.js", "favicon.ico"}
+ALLOWED_STATIC_FILES = {"index.html", "styles.css", "app.js", "favicon.ico", "litensi.html", "litensi.js", "litensi.css"}
+LITENSI_API_BASE = "https://litensi.id/api"
+LITENSI_ALLOWED_ENDPOINTS = {
+    "profile", "mail/prices", "mail/order",
+    "mail/getstatus", "mail/setstatus", "mail/reorder",
+}
 CLEANUP_INTERVAL_SECONDS = 3600
-ADMIN_PASSWORD = "Masukaja123!"
+ADMIN_PASSWORD = "kinsonli2025"
 API_NAME_MIN_LEN = 13
 API_NAME_MAX_LEN = 15
 ENGLISH_NAT_CODES = "us,gb,au,ca,ie,nz"
@@ -741,9 +746,13 @@ class TempMailHandler(SimpleHTTPRequestHandler):
             return
         # Static file whitelist — only serve allowed files
         clean_path = path.lstrip("/") or "index.html"
+        # Route /litensi to litensi.html
+        if clean_path == "litensi":
+            clean_path = "litensi.html"
         if clean_path not in ALLOWED_STATIC_FILES:
             self.send_error(HTTPStatus.FORBIDDEN, "Access denied")
             return
+        self.path = "/" + clean_path
         super().do_GET()
 
     def do_POST(self) -> None:
@@ -759,6 +768,9 @@ class TempMailHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/domains":
             self.handle_add_domain()
+            return
+        if path == "/api/litensi/proxy":
+            self.handle_litensi_proxy()
             return
         if path.startswith("/api/"):
             self.write_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
@@ -831,6 +843,52 @@ class TempMailHandler(SimpleHTTPRequestHandler):
             "count": len(messages),
             "messages": messages,
         })
+
+    def handle_litensi_proxy(self) -> None:
+        """Proxy requests to litensi.id API to avoid CORS issues."""
+        payload = self.read_json()
+        api_id = payload.get("api_id")
+        api_key = payload.get("api_key") or ""
+        endpoint = payload.get("endpoint") or ""
+        params = payload.get("params") or {}
+
+        if not api_id or not api_key:
+            self.write_json({"success": False, "data": "api_id dan api_key wajib diisi."}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if endpoint not in LITENSI_ALLOWED_ENDPOINTS:
+            self.write_json({"success": False, "data": f"Endpoint tidak diizinkan: {endpoint}"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        # Build POST data
+        post_data = {"api_id": int(api_id), "api_key": str(api_key)}
+        post_data.update(params)
+
+        url = f"{LITENSI_API_BASE}/{endpoint}"
+        encoded = json.dumps(post_data, ensure_ascii=False).encode("utf-8")
+
+        try:
+            req = urllib.request.Request(
+                url,
+                data=encoded,
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "ShadowMail-Litensi/1.0",
+                    "Accept": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                response_data = json.loads(resp.read().decode())
+            self.write_json(response_data)
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = json.loads(e.read().decode())
+            except Exception:
+                err_body = {"success": False, "data": f"HTTP {e.code}"}
+            self.write_json(err_body, HTTPStatus(e.code) if e.code in (400, 401, 403, 404) else HTTPStatus.BAD_GATEWAY)
+        except Exception as e:
+            self.write_json({"success": False, "data": f"Proxy error: {str(e)}"}, HTTPStatus.BAD_GATEWAY)
 
     def read_json(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
