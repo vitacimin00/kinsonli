@@ -865,28 +865,33 @@ class TempMailHandler(SimpleHTTPRequestHandler):
         post_data.update(params)
 
         url = f"{LITENSI_API_BASE}/{endpoint}"
-        encoded = json.dumps(post_data, ensure_ascii=False).encode("utf-8")
+        encoded = urllib.parse.urlencode(post_data).encode("utf-8")
 
         try:
             req = urllib.request.Request(
                 url,
                 data=encoded,
                 headers={
-                    "Content-Type": "application/json",
+                    "Content-Type": "application/x-www-form-urlencoded",
                     "User-Agent": "ShadowMail-Litensi/1.0",
                     "Accept": "application/json",
                 },
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
-                response_data = json.loads(resp.read().decode())
+                raw = resp.read().decode()
+                try:
+                    response_data = json.loads(raw)
+                except json.JSONDecodeError:
+                    response_data = {"success": False, "data": f"Invalid JSON: {raw[:200]}"}
             self.write_json(response_data)
         except urllib.error.HTTPError as e:
             try:
-                err_body = json.loads(e.read().decode())
+                raw_err = e.read().decode()
+                err_body = json.loads(raw_err)
             except Exception:
-                err_body = {"success": False, "data": f"HTTP {e.code}"}
-            self.write_json(err_body, HTTPStatus(e.code) if e.code in (400, 401, 403, 404) else HTTPStatus.BAD_GATEWAY)
+                err_body = {"success": False, "data": f"HTTP {e.code}: {raw_err[:200] if 'raw_err' in dir() else 'unknown'}"}
+            self.write_json(err_body, HTTPStatus(e.code) if e.code in (400, 401, 403, 404, 422) else HTTPStatus.BAD_GATEWAY)
         except Exception as e:
             self.write_json({"success": False, "data": f"Proxy error: {str(e)}"}, HTTPStatus.BAD_GATEWAY)
 
