@@ -347,43 +347,43 @@ async function doBulkOrder() {
   let successCount = 0;
   let failCount = 0;
 
+  // Show progress bar
+  showBulkProgress(0, count, "Starting...");
+
   for (let i = 0; i < count; i++) {
-    els.orderBtn.textContent = `Ordering ${i + 1}/${count}...`;
-    setStatus(`Ordering ${i + 1}/${count}...`, "loading");
+    updateBulkProgress(i, count, `Ordering ${i + 1}/${count}...`);
 
-    let success = false;
-    // Try up to 2 attempts per order
-    for (let attempt = 0; attempt < 2 && !success; attempt++) {
-      if (attempt > 0) {
-        els.orderBtn.textContent = `Retry ${i + 1}/${count}...`;
-        await new Promise(r => setTimeout(r, 3000));
-      }
-      try {
-        const result = await proxyCall("mail/order", { zone, site });
-        const order = result.data;
-        order.message = order.message || "";
-        order.full_message = order.full_message || "";
-        state.orders.unshift(order);
-        saveOrders();
-        renderOrders();
-        startPolling(order.order_id);
-        successCount++;
-        success = true;
-      } catch (err) {
-        if (attempt === 1) {
-          failCount++;
-          showToast(`Order ${i + 1} gagal: ${err.message}`, "error");
-        }
-      }
-    }
+    try {
+      const result = await proxyCall("mail/order", { zone, site });
+      const order = result.data;
+      order.message = order.message || "";
+      order.full_message = order.full_message || "";
+      state.orders.unshift(order);
+      saveOrders();
+      renderOrders();
+      startPolling(order.order_id);
+      successCount++;
 
-    // Delay 3 detik antar order
-    if (i < count - 1) {
-      await new Promise(r => setTimeout(r, 3000));
+      // Wait for this order to be processed before ordering next
+      if (i < count - 1) {
+        updateBulkProgress(i, count, `Waiting for #${i + 1} to process...`);
+        await waitForOrderProcessed(order.order_id);
+        updateBulkProgress(i + 1, count, `#${i + 1} processed ✓`);
+        // Extra small delay after confirmed
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    } catch (err) {
+      failCount++;
+      updateBulkProgress(i, count, `#${i + 1} failed: ${err.message}`);
+      // Wait before retrying next
+      if (i < count - 1) {
+        await new Promise(r => setTimeout(r, 5000));
+      }
     }
   }
 
   await refreshBalance();
+  hideBulkProgress();
   els.orderBtn.disabled = false;
   els.orderBtn.textContent = "Order";
 
@@ -392,6 +392,83 @@ async function doBulkOrder() {
     showToast(`${successCount} berhasil${failCount ? `, ${failCount} gagal` : ""}`, "success");
   } else {
     setStatus("Failed", "error");
+  }
+}
+
+/**
+ * Wait until an order is processed (getStatus returns valid data).
+ * Polls every 5 seconds, max 12 attempts (60 seconds).
+ */
+async function waitForOrderProcessed(orderId) {
+  const maxAttempts = 12;
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    try {
+      const result = await proxyCall("mail/getstatus", { order_id: orderId });
+      const data = result.data;
+      // Update order in state
+      const order = state.orders.find(o => o.order_id === orderId);
+      if (order) {
+        const prevMsg = order.message || "";
+        order.email = data.email || order.email;
+        order.message = data.message || order.message;
+        order.full_message = data.full_message || order.full_message;
+        order.status = data.status || order.status;
+        if (!prevMsg && order.message) {
+          playNotificationSound();
+          showToast(`OTP diterima: ${order.email}`, "success");
+        }
+        saveOrders();
+        renderOrders();
+      }
+      // Order is processed (has valid status), can proceed
+      return;
+    } catch {
+      // If getStatus fails, keep waiting
+    }
+  }
+  // Timeout — proceed anyway
+}
+
+/* ─── Progress Bar Helpers ─── */
+
+function showBulkProgress(current, total, text) {
+  let bar = document.getElementById("bulkProgressBar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "bulkProgressBar";
+    bar.className = "bulk-progress";
+    bar.innerHTML = `
+      <div class="bulk-progress-info">
+        <span class="bulk-progress-text"></span>
+        <span class="bulk-progress-count"></span>
+      </div>
+      <div class="bulk-progress-track">
+        <div class="bulk-progress-fill"></div>
+      </div>`;
+    // Insert after order panel form rows
+    const orderPanel = document.getElementById("orderPanel");
+    if (orderPanel) orderPanel.appendChild(bar);
+  }
+  bar.style.display = "";
+  updateBulkProgress(current, total, text);
+}
+
+function updateBulkProgress(current, total, text) {
+  const bar = document.getElementById("bulkProgressBar");
+  if (!bar) return;
+  const pct = Math.round(((current + 1) / total) * 100);
+  bar.querySelector(".bulk-progress-text").textContent = text;
+  bar.querySelector(".bulk-progress-count").textContent = `${current + 1}/${total}`;
+  bar.querySelector(".bulk-progress-fill").style.width = pct + "%";
+}
+
+function hideBulkProgress() {
+  const bar = document.getElementById("bulkProgressBar");
+  if (bar) {
+    bar.querySelector(".bulk-progress-fill").style.width = "100%";
+    bar.querySelector(".bulk-progress-text").textContent = "Done!";
+    setTimeout(() => { if (bar) bar.style.display = "none"; }, 2000);
   }
 }
 
