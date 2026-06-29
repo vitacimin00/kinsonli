@@ -277,12 +277,12 @@ async function checkPrices() {
     const allPrices = result.data || [];
 
     // Filter: only hotmail.com & outlook.com
-    const filtered = allPrices.filter(
-      (p) => p.zone === "hotmail.com" || p.zone === "outlook.com"
-    );
+    const filtered = allPrices
+      .filter((p) => p.price >= 100 && p.stock > 0)
+      .sort((a, b) => a.price - b.price);
 
     if (!filtered.length) {
-      showToast("Tidak ada zone hotmail/outlook tersedia", "error");
+      showToast("Tidak ada zone tersedia (harga ≥ Rp100)", "error");
       setStatus("No zones", "");
       state.prices = [];
       updateZoneDropdown();
@@ -306,12 +306,30 @@ function updateZoneDropdown() {
     els.orderBtn.disabled = true;
     return;
   }
+  // Random option first
+  const randOpt = document.createElement("option");
+  randOpt.value = "__random__";
+  randOpt.textContent = `🎲 Random  —  (${state.prices.length} zones)`;
+  els.zoneSelect.appendChild(randOpt);
+
   state.prices.forEach((p) => {
     const opt = document.createElement("option");
     opt.value = p.zone;
     opt.textContent = `${p.zone}  —  ${formatIDR(p.price)}  (stock: ${Number(p.stock).toLocaleString("id-ID")})`;
     els.zoneSelect.appendChild(opt);
   });
+}
+
+/** Pick a random zone, avoiding zones with active WAITING orders for this site */
+function pickRandomZone(site) {
+  const activeZones = new Set(
+    state.orders
+      .filter((o) => o.site === site && o.status === "WAITING")
+      .map((o) => o.zone)
+  );
+  const available = state.prices.filter((p) => !activeZones.has(p.zone) && p.stock > 0);
+  if (!available.length) return null;
+  return available[Math.floor(Math.random() * available.length)].zone;
 }
 
 /* Errors that are retryable */
@@ -347,10 +365,10 @@ async function orderEmail(zone, site) {
 
 async function doBulkOrder() {
   const site = (els.siteInput.value || "").trim();
-  const zone = els.zoneSelect.value;
+  const selectedZone = els.zoneSelect.value;
   const count = parseInt(els.bulkCount.value, 10) || 1;
 
-  if (!site || !zone) {
+  if (!site || !selectedZone) {
     showToast("Pilih site dan zone dulu", "error");
     return;
   }
@@ -358,6 +376,8 @@ async function doBulkOrder() {
     showToast("Jumlah harus 1-20", "error");
     return;
   }
+
+  const isRandom = selectedZone === "__random__";
 
   els.orderBtn.disabled = true;
   let successCount = 0;
@@ -367,7 +387,15 @@ async function doBulkOrder() {
   showBulkProgress(0, count, "Starting...");
 
   for (let i = 0; i < count; i++) {
-    updateBulkProgress(i, count, `Ordering ${i + 1}/${count}...`);
+    // Pick zone: random (avoiding active zones) or fixed
+    const zone = isRandom ? pickRandomZone(site) : selectedZone;
+    if (!zone) {
+      updateBulkProgress(i, count, "No more zones available!");
+      showToast("Semua zone sudah terpakai", "error");
+      break;
+    }
+
+    updateBulkProgress(i, count, `Ordering ${i + 1}/${count} (${zone})...`);
 
     try {
       const result = await apiCall("mail/order", { zone, site });
@@ -379,22 +407,14 @@ async function doBulkOrder() {
       renderOrders();
       startPolling(order.order_id);
       successCount++;
-
-      // Wait for this order to be processed before ordering next
-      if (i < count - 1) {
-        updateBulkProgress(i, count, `Waiting for #${i + 1} to process...`);
-        await waitForOrderProcessed(order.order_id);
-        updateBulkProgress(i + 1, count, `#${i + 1} processed ✓`);
-        // Extra small delay after confirmed
-        await new Promise(r => setTimeout(r, 1000));
-      }
     } catch (err) {
       failCount++;
-      updateBulkProgress(i, count, `#${i + 1} failed: ${err.message}`);
-      // Wait before retrying next
-      if (i < count - 1) {
-        await new Promise(r => setTimeout(r, 5000));
-      }
+      updateBulkProgress(i, count, `#${i + 1} (${zone}) failed: ${err.message}`);
+    }
+
+    // Small delay between orders
+    if (i < count - 1) {
+      await new Promise(r => setTimeout(r, 1500));
     }
   }
 
