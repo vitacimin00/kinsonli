@@ -135,13 +135,20 @@ async function apiCall(endpoint, params = {}) {
     postData.append(k, v);
   }
 
-  const res = await fetch(`${LITENSI_API}/${endpoint}`, {
+  const url = `${LITENSI_API}/${endpoint}`;
+  console.log(`[API] POST ${url}`);
+  console.log(`[API] Body: ${postData.toString()}`);
+
+  const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: postData.toString(),
+    body: postData, // let browser auto-set Content-Type
   });
 
-  const data = await res.json();
+  const raw = await res.text();
+  console.log(`[API] Status: ${res.status}, Response: ${raw}`);
+
+  let data;
+  try { data = JSON.parse(raw); } catch { throw new Error(`Invalid response: ${raw.slice(0, 200)}`); }
   if (data.success === false) throw new Error(data.data || "API error");
   return data;
 }
