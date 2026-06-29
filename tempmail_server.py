@@ -871,25 +871,37 @@ class TempMailHandler(SimpleHTTPRequestHandler):
             import subprocess
             result = subprocess.run(
                 [
-                    "curl", "-s", "-X", "POST", url,
+                    "curl", "-sS",
+                    "-X", "POST", url,
                     "-d", body,
                     "-H", "Content-Type: application/x-www-form-urlencoded",
                     "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
                     "-H", "Accept: application/json, text/plain, */*",
                     "--max-time", "15",
+                    "-w", "\n%{http_code}",
                 ],
                 capture_output=True, text=True, timeout=20,
             )
-            raw = result.stdout
+            output = result.stdout.strip()
+            stderr = result.stderr.strip()
+
+            if result.returncode != 0 and not output:
+                self.write_json({"success": False, "data": f"Curl failed (exit {result.returncode}): {stderr[:300]}"}, HTTPStatus.BAD_GATEWAY)
+                return
+
+            # Split response body and HTTP status code
+            lines = output.rsplit("\n", 1)
+            raw = lines[0] if len(lines) > 1 else output
+            http_code = int(lines[-1]) if len(lines) > 1 and lines[-1].isdigit() else 0
+
             if not raw:
-                raw = result.stderr
-                self.write_json({"success": False, "data": f"Curl error: {raw[:300]}"}, HTTPStatus.BAD_GATEWAY)
+                self.write_json({"success": False, "data": f"Empty response (HTTP {http_code}): {stderr[:200]}"}, HTTPStatus.BAD_GATEWAY)
                 return
 
             try:
                 response_data = json.loads(raw)
             except json.JSONDecodeError:
-                response_data = {"success": False, "data": f"Invalid response: {raw[:300]}"}
+                response_data = {"success": False, "data": f"Invalid response (HTTP {http_code}): {raw[:300]}"}
             self.write_json(response_data)
         except Exception as e:
             self.write_json({"success": False, "data": f"Proxy error: {str(e)}"}, HTTPStatus.BAD_GATEWAY)
