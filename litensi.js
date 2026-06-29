@@ -117,11 +117,11 @@ function playNotificationSound() {
 }
 
 /* ═══════════════════════════════════════════════════
-   API — Direct call (browser → litensi.id)
-   Falls back to proxy if CORS blocks direct call
+   API — via Nginx reverse proxy (forwards client IP)
+   Path: /api/litensi-direct/{endpoint}
    ═══════════════════════════════════════════════════ */
 
-const LITENSI_API = "https://litensi.id/api";
+const LITENSI_PROXY = "/api/litensi-direct";
 
 async function apiCall(endpoint, params = {}) {
   if (!state.apiId || !state.apiKey) {
@@ -135,40 +135,13 @@ async function apiCall(endpoint, params = {}) {
     postData.append(k, v);
   }
 
-  // Try direct call first (from user's browser IP)
-  try {
-    const res = await fetch(`${LITENSI_API}/${endpoint}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: postData.toString(),
-    });
-    const data = await res.json();
-    if (data.success === false) throw new Error(data.data || "API error");
-    return data;
-  } catch (err) {
-    // If it's an API error (not CORS), throw it directly
-    if (err.message && !err.message.includes("Failed to fetch") && !err.message.includes("NetworkError")) {
-      throw err;
-    }
-    // CORS blocked — fallback to proxy
-    console.log("Direct call blocked (CORS), falling back to proxy...");
-    return proxyCall(endpoint, params);
-  }
-}
-
-async function proxyCall(endpoint, params = {}) {
-  const res = await fetch(PROXY_URL, {
+  const res = await fetch(`${LITENSI_PROXY}/${endpoint}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      api_id: state.apiId,
-      api_key: state.apiKey,
-      endpoint,
-      params,
-    }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: postData.toString(),
   });
+
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || data.data || res.statusText);
   if (data.success === false) throw new Error(data.data || "API error");
   return data;
 }
