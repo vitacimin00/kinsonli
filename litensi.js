@@ -351,24 +351,35 @@ async function doBulkOrder() {
     els.orderBtn.textContent = `Ordering ${i + 1}/${count}...`;
     setStatus(`Ordering ${i + 1}/${count}...`, "loading");
 
-    try {
-      const result = await proxyCall("mail/order", { zone, site });
-      const order = result.data;
-      order.message = order.message || "";
-      order.full_message = order.full_message || "";
-      state.orders.unshift(order);
-      saveOrders();
-      renderOrders();
-      startPolling(order.order_id);
-      successCount++;
-    } catch (err) {
-      failCount++;
-      showToast(`Order ${i + 1} gagal: ${err.message}`, "error");
+    let success = false;
+    // Try up to 2 attempts per order
+    for (let attempt = 0; attempt < 2 && !success; attempt++) {
+      if (attempt > 0) {
+        els.orderBtn.textContent = `Retry ${i + 1}/${count}...`;
+        await new Promise(r => setTimeout(r, 3000));
+      }
+      try {
+        const result = await proxyCall("mail/order", { zone, site });
+        const order = result.data;
+        order.message = order.message || "";
+        order.full_message = order.full_message || "";
+        state.orders.unshift(order);
+        saveOrders();
+        renderOrders();
+        startPolling(order.order_id);
+        successCount++;
+        success = true;
+      } catch (err) {
+        if (attempt === 1) {
+          failCount++;
+          showToast(`Order ${i + 1} gagal: ${err.message}`, "error");
+        }
+      }
     }
 
-    // Delay 2 detik antar order (kecuali yang terakhir)
+    // Delay 3 detik antar order
     if (i < count - 1) {
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 3000));
     }
   }
 
