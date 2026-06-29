@@ -845,7 +845,7 @@ class TempMailHandler(SimpleHTTPRequestHandler):
         })
 
     def handle_litensi_proxy(self) -> None:
-        """Proxy requests to litensi.id API to avoid CORS issues."""
+        """Proxy requests to litensi.id API, forwarding client IP."""
         payload = self.read_json()
         api_id = payload.get("api_id")
         api_key = payload.get("api_key") or ""
@@ -860,6 +860,13 @@ class TempMailHandler(SimpleHTTPRequestHandler):
             self.write_json({"success": False, "data": f"Endpoint tidak diizinkan: {endpoint}"}, HTTPStatus.BAD_REQUEST)
             return
 
+        # Get client's real IP to forward
+        client_ip = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        if not client_ip:
+            client_ip = self.headers.get("X-Real-IP", "")
+        if not client_ip:
+            client_ip = self.client_address[0]
+
         # Build POST data
         post_data = {"api_id": int(api_id), "api_key": str(api_key)}
         post_data.update(params)
@@ -873,10 +880,12 @@ class TempMailHandler(SimpleHTTPRequestHandler):
                 data=encoded,
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
                     "Accept": "application/json, text/plain, */*",
                     "Origin": "https://litensi.id",
                     "Referer": "https://litensi.id/mail",
+                    "X-Forwarded-For": client_ip,
+                    "X-Real-IP": client_ip,
                 },
                 method="POST",
             )
