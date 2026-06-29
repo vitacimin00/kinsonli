@@ -117,13 +117,46 @@ function playNotificationSound() {
 }
 
 /* ═══════════════════════════════════════════════════
-   API Proxy
+   API — Direct call (browser → litensi.id)
+   Falls back to proxy if CORS blocks direct call
    ═══════════════════════════════════════════════════ */
 
-async function proxyCall(endpoint, params = {}) {
+const LITENSI_API = "https://litensi.id/api";
+
+async function apiCall(endpoint, params = {}) {
   if (!state.apiId || !state.apiKey) {
     throw new Error("Belum login. Masukkan API credentials dulu.");
   }
+
+  const postData = new URLSearchParams();
+  postData.append("api_id", state.apiId);
+  postData.append("api_key", state.apiKey);
+  for (const [k, v] of Object.entries(params)) {
+    postData.append(k, v);
+  }
+
+  // Try direct call first (from user's browser IP)
+  try {
+    const res = await fetch(`${LITENSI_API}/${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: postData.toString(),
+    });
+    const data = await res.json();
+    if (data.success === false) throw new Error(data.data || "API error");
+    return data;
+  } catch (err) {
+    // If it's an API error (not CORS), throw it directly
+    if (err.message && !err.message.includes("Failed to fetch") && !err.message.includes("NetworkError")) {
+      throw err;
+    }
+    // CORS blocked — fallback to proxy
+    console.log("Direct call blocked (CORS), falling back to proxy...");
+    return proxyCall(endpoint, params);
+  }
+}
+
+async function proxyCall(endpoint, params = {}) {
   const res = await fetch(PROXY_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -181,7 +214,7 @@ async function login() {
   state.apiKey = apiKey;
 
   try {
-    const result = await proxyCall("profile", {});
+    const result = await apiCall("profile", {});
     state.loggedIn = true;
     state.balance = result.data.balance || 0;
     saveCreds();
@@ -246,7 +279,7 @@ function showLoggedOutUI() {
 
 async function refreshBalance() {
   try {
-    const result = await proxyCall("profile", {});
+    const result = await apiCall("profile", {});
     state.balance = result.data.balance || 0;
     els.balanceAmount.textContent = formatIDR(state.balance);
   } catch { /* silent */ }
@@ -267,7 +300,7 @@ async function checkPrices() {
   setStatus("Checking prices...", "loading");
 
   try {
-    const result = await proxyCall("mail/prices", { site });
+    const result = await apiCall("mail/prices", { site });
     const allPrices = result.data || [];
 
     // Filter: only hotmail.com & outlook.com
@@ -315,7 +348,7 @@ async function orderEmail(zone, site) {
   const maxRetries = 3;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const result = await proxyCall("mail/order", { zone, site });
+      const result = await apiCall("mail/order", { zone, site });
       const order = result.data;
       order.message = order.message || "";
       order.full_message = order.full_message || "";
@@ -364,7 +397,7 @@ async function doBulkOrder() {
     updateBulkProgress(i, count, `Ordering ${i + 1}/${count}...`);
 
     try {
-      const result = await proxyCall("mail/order", { zone, site });
+      const result = await apiCall("mail/order", { zone, site });
       const order = result.data;
       order.message = order.message || "";
       order.full_message = order.full_message || "";
@@ -414,7 +447,7 @@ async function waitForOrderProcessed(orderId) {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, 5000));
     try {
-      const result = await proxyCall("mail/getstatus", { order_id: orderId });
+      const result = await apiCall("mail/getstatus", { order_id: orderId });
       const data = result.data;
       // Update order in state
       const order = state.orders.find(o => o.order_id === orderId);
@@ -513,7 +546,7 @@ async function pollOrderStatus(orderId) {
   if (!order) { stopPolling(orderId); return; }
 
   try {
-    const result = await proxyCall("mail/getstatus", { order_id: orderId });
+    const result = await apiCall("mail/getstatus", { order_id: orderId });
     const data = result.data;
     const prevMessage = order.message || "";
     const newMessage = data.message || "";
@@ -683,7 +716,7 @@ function createOrderCard(order) {
       cancelBtn.disabled = true;
       cancelBtn.textContent = "Canceling...";
       try {
-        await proxyCall("mail/setstatus", { order_id: order.order_id, status: "CANCELED" });
+        await apiCall("mail/setstatus", { order_id: order.order_id, status: "CANCELED" });
         order.status = "CANCELED";
         stopPolling(order.order_id);
         saveOrders();
@@ -752,7 +785,7 @@ async function init() {
     els.loginBtn.textContent = "Logging in...";
 
     try {
-      const result = await proxyCall("profile", {});
+      const result = await apiCall("profile", {});
       state.loggedIn = true;
       state.balance = result.data.balance || 0;
       showLoggedInUI();
