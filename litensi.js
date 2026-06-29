@@ -128,24 +128,19 @@ async function apiCall(endpoint, params = {}) {
     throw new Error("Belum login. Masukkan API credentials dulu.");
   }
 
-  const postData = new URLSearchParams();
-  postData.append("api_id", state.apiId);
-  postData.append("api_key", state.apiKey);
-  for (const [k, v] of Object.entries(params)) {
-    postData.append(k, v);
-  }
-
-  const url = `${LITENSI_API}/${endpoint}`;
-  console.log(`[API] POST ${url}`);
-  console.log(`[API] Body: ${postData.toString()}`);
-
-  const res = await fetch(url, {
+  const res = await fetch(PROXY_URL, {
     method: "POST",
-    body: postData, // let browser auto-set Content-Type
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      api_id: state.apiId,
+      api_key: state.apiKey,
+      endpoint,
+      params,
+    }),
   });
 
   const raw = await res.text();
-  console.log(`[API] Status: ${res.status}, Response: ${raw}`);
+  console.log(`[API] ${endpoint} → ${raw.slice(0, 200)}`);
 
   let data;
   try { data = JSON.parse(raw); } catch { throw new Error(`Invalid response: ${raw.slice(0, 200)}`); }
