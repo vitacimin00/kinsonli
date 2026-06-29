@@ -865,16 +865,18 @@ class TempMailHandler(SimpleHTTPRequestHandler):
         post_data.update(params)
 
         url = f"{LITENSI_API_BASE}/{endpoint}"
-        encoded = json.dumps(post_data, ensure_ascii=False).encode("utf-8")
+        encoded = urllib.parse.urlencode(post_data).encode("utf-8")
 
         try:
             req = urllib.request.Request(
                 url,
                 data=encoded,
                 headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": "ShadowMail-Litensi/1.0",
-                    "Accept": "application/json",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "application/json, text/plain, */*",
+                    "Origin": "https://litensi.id",
+                    "Referer": "https://litensi.id/mail",
                 },
                 method="POST",
             )
@@ -883,14 +885,15 @@ class TempMailHandler(SimpleHTTPRequestHandler):
                 try:
                     response_data = json.loads(raw)
                 except json.JSONDecodeError:
-                    response_data = {"success": False, "data": f"Invalid JSON: {raw[:200]}"}
+                    response_data = {"success": False, "data": f"Invalid response: {raw[:300]}"}
             self.write_json(response_data)
         except urllib.error.HTTPError as e:
+            raw_err = ""
             try:
                 raw_err = e.read().decode()
                 err_body = json.loads(raw_err)
             except Exception:
-                err_body = {"success": False, "data": f"HTTP {e.code}: {raw_err[:200] if 'raw_err' in dir() else 'unknown'}"}
+                err_body = {"success": False, "data": f"HTTP {e.code}: {raw_err[:300]}"}
             self.write_json(err_body, HTTPStatus(e.code) if e.code in (400, 401, 403, 404, 422) else HTTPStatus.BAD_GATEWAY)
         except Exception as e:
             self.write_json({"success": False, "data": f"Proxy error: {str(e)}"}, HTTPStatus.BAD_GATEWAY)
