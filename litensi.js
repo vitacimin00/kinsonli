@@ -35,7 +35,7 @@ function cacheDom() {
   els.orderPanel      = $("#orderPanel");
   els.siteInput       = $("#siteInput");
   els.zoneSelect      = $("#zoneSelect");
-  els.bulkCount       = $("#bulkCount");
+
   els.orderBtn        = $("#orderBtn");
   els.ordersContainer = $("#ordersContainer");
   els.ordersLiveIndicator = $("#ordersLiveIndicator");
@@ -308,12 +308,6 @@ function updateZoneDropdown() {
     els.orderBtn.disabled = true;
     return;
   }
-  // Random option first
-  const randOpt = document.createElement("option");
-  randOpt.value = "__random__";
-  randOpt.textContent = `🎲 Random  —  (${state.prices.length} zones)`;
-  els.zoneSelect.appendChild(randOpt);
-
   state.prices.forEach((p) => {
     const opt = document.createElement("option");
     opt.value = p.zone;
@@ -322,114 +316,37 @@ function updateZoneDropdown() {
   });
 }
 
-/** Pick a random zone, avoiding zones with active WAITING orders for this site */
-function pickRandomZone(site) {
-  const activeZones = new Set(
-    state.orders
-      .filter((o) => o.site === site && o.status === "WAITING")
-      .map((o) => o.zone)
-  );
-  const available = state.prices.filter((p) => !activeZones.has(p.zone) && p.stock > 0);
-  if (!available.length) return null;
-  return available[Math.floor(Math.random() * available.length)].zone;
-}
-
-/* Errors that are retryable */
-const RETRYABLE_ERRORS = ["ERORR OCCURS", "TIME LIMIT EXCEED"];
-
-async function orderEmail(zone, site) {
-  const maxRetries = 3;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const result = await apiCall("mail/order", { zone, site });
-      const order = result.data;
-      order.message = order.message || "";
-      order.full_message = order.full_message || "";
-      state.orders.unshift(order);
-      saveOrders();
-      renderOrders();
-      startPolling(order.order_id);
-      return order;
-    } catch (err) {
-      const msg = err.message || "";
-      if (RETRYABLE_ERRORS.some(e => msg.includes(e)) && attempt < maxRetries - 1) {
-        // Retryable error — wait 5 seconds then retry
-        setStatus(`Retry in 5s... (${msg})`, "loading");
-        await new Promise(r => setTimeout(r, 5000));
-        continue;
-      }
-      showToast(msg || "Order gagal", "error");
-      return null;
-    }
-  }
-  return null;
-}
-
-async function doBulkOrder() {
+async function doOrder() {
   const site = (els.siteInput.value || "").trim();
-  const selectedZone = els.zoneSelect.value;
-  const count = parseInt(els.bulkCount.value, 10) || 1;
+  const zone = els.zoneSelect.value;
 
-  if (!site || !selectedZone) {
+  if (!site || !zone) {
     showToast("Pilih site dan zone dulu", "error");
     return;
   }
-  if (count < 1 || count > 20) {
-    showToast("Jumlah harus 1-20", "error");
-    return;
-  }
-
-  const isRandom = selectedZone === "__random__";
 
   els.orderBtn.disabled = true;
-  let successCount = 0;
-  let failCount = 0;
+  els.orderBtn.textContent = "Ordering...";
+  setStatus("Ordering...", "loading");
 
-  // Show progress bar
-  showBulkProgress(0, count, "Starting...");
-
-  for (let i = 0; i < count; i++) {
-    // Pick zone: random (avoiding active zones) or fixed
-    const zone = isRandom ? pickRandomZone(site) : selectedZone;
-    if (!zone) {
-      updateBulkProgress(i, count, "No more zones available!");
-      showToast("Semua zone sudah terpakai", "error");
-      break;
-    }
-
-    updateBulkProgress(i, count, `Ordering ${i + 1}/${count} (${zone})...`);
-
-    try {
-      const result = await apiCall("mail/order", { zone, site });
-      const order = result.data;
-      order.message = order.message || "";
-      order.full_message = order.full_message || "";
-      state.orders.unshift(order);
-      saveOrders();
-      renderOrders();
-      startPolling(order.order_id);
-      successCount++;
-    } catch (err) {
-      failCount++;
-      updateBulkProgress(i, count, `#${i + 1} (${zone}) failed: ${err.message}`);
-    }
-
-    // Small delay between orders
-    if (i < count - 1) {
-      await new Promise(r => setTimeout(r, 1500));
-    }
-  }
-
-  await refreshBalance();
-  hideBulkProgress();
-  els.orderBtn.disabled = false;
-  els.orderBtn.textContent = "Order";
-
-  if (successCount > 0) {
-    setStatus(`${successCount} ordered`, "ok");
-    showToast(`${successCount} berhasil${failCount ? `, ${failCount} gagal` : ""}`, "success");
-  } else {
-    setStatus("Failed", "error");
+  try {
+    const result = await apiCall("mail/order", { zone, site });
+    const order = result.data;
+    order.message = order.message || "";
+    order.full_message = order.full_message || "";
+    state.orders.unshift(order);
+    saveOrders();
+    renderOrders();
+    startPolling(order.order_id);
+    await refreshBalance();
+    setStatus("Order success!", "ok");
+    showToast(`Order berhasil: ${order.email}`, "success");
+  } catch (err) {
+    setStatus("Order failed", "error");
+    showToast(err.message || "Order gagal", "error");
+  } finally {
+    els.orderBtn.disabled = false;
+    els.orderBtn.textContent = "Order";
   }
 }
 
@@ -747,7 +664,7 @@ function createOrderCard(order) {
 function bindEvents() {
   els.loginBtn.addEventListener("click", login);
   els.logoutBtn.addEventListener("click", logout);
-  els.orderBtn.addEventListener("click", doBulkOrder);
+  els.orderBtn.addEventListener("click", doOrder);
   els.copyAllBtn.addEventListener("click", copyAllEmails);
   els.clearDoneBtn.addEventListener("click", clearDoneOrders);
 
