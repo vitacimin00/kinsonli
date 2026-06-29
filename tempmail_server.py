@@ -865,14 +865,14 @@ class TempMailHandler(SimpleHTTPRequestHandler):
         post_data.update(params)
 
         url = f"{LITENSI_API_BASE}/{endpoint}"
-        encoded = urllib.parse.urlencode(post_data).encode("utf-8")
+        encoded = json.dumps(post_data, ensure_ascii=False).encode("utf-8")
 
         try:
             req = urllib.request.Request(
                 url,
                 data=encoded,
                 headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Content-Type": "application/json",
                     "User-Agent": "ShadowMail-Litensi/1.0",
                     "Accept": "application/json",
                 },
