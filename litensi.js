@@ -117,11 +117,11 @@ function playNotificationSound() {
 }
 
 /* ═══════════════════════════════════════════════════
-   API — via Nginx reverse proxy (forwards client IP)
-   Path: /api/litensi-direct/{endpoint}
+   API — Direct call to litensi.id (CORS supported)
+   Browser → litensi.id (user's IP, not server IP)
    ═══════════════════════════════════════════════════ */
 
-const LITENSI_PROXY = "/api/litensi-direct";
+const LITENSI_API = "https://litensi.id/api";
 
 async function apiCall(endpoint, params = {}) {
   if (!state.apiId || !state.apiKey) {
@@ -135,7 +135,7 @@ async function apiCall(endpoint, params = {}) {
     postData.append(k, v);
   }
 
-  const res = await fetch(`${LITENSI_PROXY}/${endpoint}`, {
+  const res = await fetch(`${LITENSI_API}/${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: postData.toString(),
