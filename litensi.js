@@ -344,15 +344,31 @@ async function doBulkOrder() {
   }
 
   els.orderBtn.disabled = true;
-  els.orderBtn.textContent = "Ordering...";
-  setStatus(`Ordering ${count} email(s)...`, "loading");
-
   let successCount = 0;
+  let failCount = 0;
+
   for (let i = 0; i < count; i++) {
-    const order = await orderEmail(zone, site);
-    if (order) successCount++;
-    // Small delay between orders to avoid rate limits
-    if (i < count - 1) await new Promise(r => setTimeout(r, 1500));
+    els.orderBtn.textContent = `Ordering ${i + 1}/${count}...`;
+    setStatus(`Ordering ${i + 1}/${count}...`, "loading");
+
+    try {
+      const result = await proxyCall("mail/order", { zone, site });
+      const order = result.data;
+      order.message = order.message || "";
+      order.full_message = order.full_message || "";
+      state.orders.unshift(order);
+      saveOrders();
+      renderOrders();
+      startPolling(order.order_id);
+      successCount++;
+    } catch {
+      failCount++;
+    }
+
+    // Delay 2 detik antar order (kecuali yang terakhir)
+    if (i < count - 1) {
+      await new Promise(r => setTimeout(r, 2000));
+    }
   }
 
   await refreshBalance();
@@ -361,7 +377,7 @@ async function doBulkOrder() {
 
   if (successCount > 0) {
     setStatus(`${successCount} ordered`, "ok");
-    showToast(`${successCount}/${count} email berhasil di-order!`, "success");
+    showToast(`${successCount} berhasil${failCount ? `, ${failCount} gagal` : ""}`, "success");
   } else {
     setStatus("Failed", "error");
   }
