@@ -532,13 +532,22 @@ function createOrderCard(order) {
   if (order.price != null) metaParts.push(formatIDR(order.price));
   if (timeStr) metaParts.push(timeStr);
 
+  // Action buttons
+  const actions = [];
+  if (order.status === "WAITING" && !order.message) {
+    actions.push(`<button class="btn btn-sm btn-danger btn-cancel">✕ Cancel</button>`);
+  }
+  actions.push(`<button class="btn btn-sm btn-ghost btn-remove">🗑 Remove</button>`);
+  const actionsHTML = `<div class="order-actions">${actions.join("")}</div>`;
+
   card.innerHTML = `
     <div class="order-card-header">
       <span class="order-email" title="Click to copy">${escapeHtml(order.email || "—")}</span>
       ${badgeHTML}
     </div>
     <div class="order-meta">${escapeHtml(metaParts.join("  ·  "))}</div>
-    ${otpHTML}`;
+    ${otpHTML}
+    ${actionsHTML}`;
 
   // Bind: copy email on click
   const emailEl = card.querySelector(".order-email");
@@ -550,6 +559,39 @@ function createOrderCard(order) {
   const copyOtpBtn = card.querySelector(".btn-copy-otp");
   if (copyOtpBtn) {
     copyOtpBtn.addEventListener("click", () => copyToClipboard(order.message, "OTP copied!"));
+  }
+
+  // Bind: cancel (API call)
+  const cancelBtn = card.querySelector(".btn-cancel");
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", async () => {
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = "Canceling...";
+      try {
+        await proxyCall("mail/setstatus", { order_id: order.order_id, status: "CANCELED" });
+        order.status = "CANCELED";
+        stopPolling(order.order_id);
+        saveOrders();
+        renderOrders();
+        showToast("Order di-cancel", "success");
+      } catch (err) {
+        showToast(err.message || "Gagal cancel", "error");
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = "✕ Cancel";
+      }
+    });
+  }
+
+  // Bind: remove from list (UI only)
+  const removeBtn = card.querySelector(".btn-remove");
+  if (removeBtn) {
+    removeBtn.addEventListener("click", () => {
+      stopPolling(order.order_id);
+      state.orders = state.orders.filter((o) => o.order_id !== order.order_id);
+      saveOrders();
+      renderOrders();
+      showToast("Dihapus dari list", "success");
+    });
   }
 
   return card;
