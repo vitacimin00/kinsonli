@@ -5,12 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ShadowMail — Litensi Email Activation</title>
   <meta name="description" content="Email activation via Litensi API">
-  <!-- Same fonts as main app -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="litensi.css?v=1">
-  <!-- Same favicon as main app -->
+  <link rel="stylesheet" href="litensi.css?v=2">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2338bdf8'/%3E%3Cstop offset='100%25' stop-color='%23a78bfa'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='20' fill='%230b0f18'/%3E%3Cpath d='M20 30h60L50 55 20 30z M20 30v40h60V30L50 55 20 30z' fill='none' stroke='url(%23g)' stroke-width='5' stroke-linejoin='round'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -57,7 +55,7 @@
       </div>
       <div id="balanceBar" class="balance-bar" style="display:none">
         <span class="balance-text">Saldo: <strong id="balanceAmount">Rp 0</strong></span>
-        <button id="logoutBtn" class="btn btn-ghost">Logout</button>
+        <button id="logoutBtn" class="btn btn-ghost btn-sm">Logout</button>
       </div>
     </section>
 
@@ -66,15 +64,22 @@
       <div class="panel-header">
         <span class="panel-icon">📧</span>
         <div>
-          <h2 class="panel-title">Order Email</h2>
-          <p class="panel-desc">Pilih service dan zone untuk order email activation</p>
+          <h2 class="panel-title">Order Email Activation</h2>
+          <p class="panel-desc">Masukkan domain pengirim, pilih zone, lalu order</p>
         </div>
       </div>
+      <!-- Row 1: Site input -->
       <div class="form-row">
         <input id="siteInput" type="text" class="input" placeholder="Domain pengirim, e.g. tiktok.com" autocomplete="off">
-        <button id="checkPricesBtn" class="btn btn-primary">Cek Harga</button>
       </div>
-      <div id="priceTableContainer"></div>
+      <!-- Row 2: Zone dropdown + Count + Order button -->
+      <div class="form-row">
+        <select id="zoneSelect" class="input">
+          <option value="">-- Masukkan site dulu --</option>
+        </select>
+        <input id="bulkCount" type="number" class="input input-count" value="1" min="1" max="20" placeholder="Qty">
+        <button id="orderBtn" class="btn btn-primary" disabled>Order</button>
+      </div>
     </section>
 
     <!-- ── Section Divider ── -->
@@ -87,9 +92,13 @@
         <div>
           <h2 class="panel-title">Orders</h2>
         </div>
-        <span id="ordersLiveIndicator" class="live-indicator">
-          <span class="live-dot"></span> Live
-        </span>
+        <div class="orders-toolbar">
+          <button id="copyAllBtn" class="btn btn-ghost btn-sm" style="display:none">📋 Copy All Email</button>
+          <button id="clearDoneBtn" class="btn btn-ghost btn-sm" style="display:none">🧹 Clear Selesai</button>
+          <span id="ordersLiveIndicator" class="live-indicator">
+            <span class="live-dot"></span> Live
+          </span>
+        </div>
       </div>
       <div id="ordersContainer">
         <div class="empty-state">
@@ -105,6 +114,6 @@
     <p>ShadowMail × Litensi — Email activation powered by Litensi.id</p>
   </footer>
 
-  <script src="litensi.js?v=1"></script>
+  <script src="litensi.js?v=2"></script>
 </body>
 </html>
