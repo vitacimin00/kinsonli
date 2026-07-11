@@ -54,7 +54,7 @@ FAKER_API_URLS = [
     "https://fakerapi.it/api/v1/persons",
 ]
 FAKER_INDONESIA_LOCALE = "id_ID"
-API_TIMEOUT = 7
+API_TIMEOUT = 2
 
 CODE_PATTERNS = [
     # Dash-format code (uppercase) BEFORE "confirmation/verification code" phrase
@@ -845,7 +845,7 @@ class TempMailHandler(SimpleHTTPRequestHandler):
         })
 
     def handle_litensi_proxy(self) -> None:
-        """Proxy requests to litensi.id API using curl (bypasses TLS fingerprinting)."""
+        """Proxy requests to litensi.id API using Python urllib (not curl — curl TLS is blocked by Cloudflare)."""
         payload = self.read_json()
         api_id = payload.get("api_id")
         api_key = payload.get("api_key") or ""
@@ -865,35 +865,48 @@ class TempMailHandler(SimpleHTTPRequestHandler):
         post_data.update(params)
 
         url = f"{LITENSI_API_BASE}/{endpoint}"
-        body = urllib.parse.urlencode(post_data)
+        encoded = urllib.parse.urlencode(post_data).encode("utf-8")
 
-        # Log for debugging
-        import sys, subprocess
-        print(f"[LITENSI] curl -s -X POST {url} -d '{body}' -H 'Content-Type: application/x-www-form-urlencoded'", file=sys.stderr)
+        import sys, ssl
+        print(f"[LITENSI] POST {url} body={urllib.parse.urlencode(post_data)}", file=sys.stderr)
 
         try:
-            result = subprocess.run(
-                [
-                    "curl", "-s",
-                    "-X", "POST", url,
-                    "-d", body,
-                    "-H", "Content-Type: application/x-www-form-urlencoded",
-                ],
-                capture_output=True, text=True, timeout=20,
+            # Custom SSL context — modern TLS, NOT curl fingerprint
+            ctx = ssl.create_default_context()
+            ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
+            ctx.check_hostname = True
+            ctx.verify_mode = ssl.CERT_REQUIRED
+
+            req = urllib.request.Request(
+                url,
+                data=encoded,
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+                method="POST",
             )
-            raw = result.stdout.strip()
-            print(f"[LITENSI] exit={result.returncode} response={raw[:200]}", file=sys.stderr)
-
-            if not raw:
-                self.write_json({"success": False, "data": f"Curl empty (exit {result.returncode}): {result.stderr[:200]}"}, HTTPStatus.BAD_GATEWAY)
-                return
-
-            try:
-                response_data = json.loads(raw)
-            except json.JSONDecodeError:
-                response_data = {"success": False, "data": f"Bad response: {raw[:300]}"}
+            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                raw = resp.read().decode()
+                print(f"[LITENSI] OK response={raw[:200]}", file=sys.stderr)
+                try:
+                    response_data = json.loads(raw)
+                except json.JSONDecodeError:
+                    response_data = {"success": False, "data": f"Invalid response: {raw[:300]}"}
             self.write_json(response_data)
+        except urllib.error.HTTPError as e:
+            raw_err = ""
+            try:
+                raw_err = e.read().decode()
+                print(f"[LITENSI] HTTP {e.code} response={raw_err[:200]}", file=sys.stderr)
+                err_body = json.loads(raw_err)
+            except Exception:
+                err_body = {"success": False, "data": f"HTTP {e.code}: {raw_err[:300]}"}
+            self.write_json(err_body, HTTPStatus(e.code) if e.code in (400, 401, 403, 404, 422) else HTTPStatus.BAD_GATEWAY)
         except Exception as e:
+            print(f"[LITENSI] Exception: {e}", file=sys.stderr)
             self.write_json({"success": False, "data": f"Proxy error: {str(e)}"}, HTTPStatus.BAD_GATEWAY)
 
     def read_json(self) -> dict:
